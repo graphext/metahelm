@@ -140,6 +140,7 @@ func (og *ObjectGraph) setRoot() error {
 }
 
 // calcLevels finds the level (layer) of each node in the DAG by calculating the longest path to each node
+// https://en.wikipedia.org/wiki/Longest_path_problem#Acyclic_graphs_and_critical_paths
 func (og *ObjectGraph) calcLevels() {
 	wdg := simple.NewWeightedDirectedGraph(0, 0)
 	for _, n := range og.g.Nodes() {
