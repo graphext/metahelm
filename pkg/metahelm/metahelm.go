@@ -26,10 +26,20 @@ type HelmClient interface {
 	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
 }
 
+// LogFunc is a function that logs a formatted string somewhere
+type LogFunc func(string, ...interface{})
+
 // Manager is an object that manages installation of chart graphs
 type Manager struct {
-	K8c K8sClient
-	HC  HelmClient
+	K8c  K8sClient
+	HC   HelmClient
+	LogF LogFunc
+}
+
+func (m *Manager) log(msg string, args ...interface{}) {
+	if m.LogF != nil {
+		m.LogF(msg, args...)
+	}
 }
 
 type options struct {
@@ -88,7 +98,8 @@ type lockingReleases struct {
 
 // DefaultK8sNamespace is the k8s namespace to install a chart graph into if not specified
 const DefaultK8sNamespace = "default"
-const retryDelay = 10 * time.Second
+
+var retryDelay = 10 * time.Second
 
 // Install installs charts in order according to dependencies and returns the names of the releases, or error
 func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
@@ -121,29 +132,41 @@ func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOp
 		cmap[charts[i].Name()] = &charts[i]
 		objs = append(objs, &charts[i])
 	}
-	og := dag.ObjectGraph{}
+	lf := func(msg string, args ...interface{}) {
+		if m.LogF != nil {
+			m.LogF("objgraph: "+msg, args...)
+		}
+	}
+	og := dag.ObjectGraph{LogF: dag.LogFunc(lf)}
 	if err := og.Build(objs); err != nil {
 		return nil, errors.Wrap(err, "error building graph")
 	}
 	rn := lockingReleases{rmap: make(map[string]string)}
 	af := func(obj dag.GraphObject) error {
+		m.log("%v: starting install", obj.Name())
+	Loop:
 		for {
 			if ops.installCallback == nil {
+				m.log("%v: install callback is not set; proceeding", obj.Name())
 				break
 			}
 			v := ops.installCallback(*cmap[obj.Name()])
 			switch v {
 			case Continue:
-				break
+				m.log("%v: install callback indicated Continue; proceeding", obj.Name())
+				break Loop
 			case Wait:
+				m.log("%v: install callback indicated Wait; delaying", obj.Name())
 				time.Sleep(retryDelay)
 			case Abort:
+				m.log("%v: install callback indicated Abort; aborting", obj.Name())
 				return errors.New("callback requested abort")
 			default:
 				return fmt.Errorf("unknown callback result: %v", v)
 			}
 		}
 		c := cmap[obj.Name()]
+		m.log("%v: running helm install", obj.Name())
 		resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace, helm.ValueOverrides(c.ValueOverrides))
 		if err != nil {
 			return errors.Wrap(err, "error installing chart")
@@ -151,6 +174,7 @@ func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOp
 		rn.Lock()
 		rn.rmap[c.Title] = resp.Release.Name
 		rn.Unlock()
+		m.log("%v: installation complete; waiting for health", obj.Name())
 		return m.waitForChart(ctx, c, ops.k8sNamespace)
 	}
 	if err := og.Walk(ctx, af); err != nil {
@@ -159,10 +183,12 @@ func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOp
 	return rn.rmap, nil
 }
 
-const chartWaitPollInterval = 10 * time.Second
+var chartWaitPollInterval = 10 * time.Second
 
 func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
+	defer m.log("%v: done", c.Name())
 	if c.DeploymentHealthIndication == IgnorePodHealth {
+		m.log("%v: IgnorePodHealth, no health check needed", c.Name())
 		return nil
 	}
 	return wait.Poll(chartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
@@ -181,6 +207,7 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 			if c.DeploymentHealthIndication == AllPodsHealthy {
 				needed = int(*d.Spec.Replicas)
 			}
+			m.log("%v: %v ready replicas, %v needed", c.Name(), rs.Status.ReadyReplicas, needed)
 			return int(rs.Status.ReadyReplicas) >= needed, nil
 		}
 		return false, nil

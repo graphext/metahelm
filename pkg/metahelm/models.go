@@ -19,13 +19,13 @@ const DefaultDeploymentTimeout = 10 * time.Minute
 
 // Chart models a single installable Helm chart
 type Chart struct {
-	Title                      string           `yaml:"title"`                        // unique name for this chart (must not collide with any dependencies)
-	Location                   string           `yaml:"location"`                     // local filesystem location
-	ValueOverrides             []byte           `yaml:"value_overrides"`              // value overrides as raw YAML stream
-	WaitUntilDeployment        string           `yaml:"wait_until_deployment"`        // Deployment name that, when healthy, indicates chart install has succeeded
-	WaitTimeout                time.Duration    `yaml:"wait_timeout"`                 // how long to wait for the deployment to become healthy. If unset, DefaultDeploymentTimeout is used
-	DeploymentHealthIndication HealthIndication `yaml:"deployment_health_indication"` // How to determine if a deployment is healthy
-	DependencyList             []string         `yaml:"dependencies"`
+	Title                      string           // unique name for this chart (must not collide with any dependencies)
+	Location                   string           // local filesystem location
+	ValueOverrides             []byte           // value overrides as raw YAML stream
+	WaitUntilDeployment        string           // Deployment name that, when healthy, indicates chart install has succeeded
+	WaitTimeout                time.Duration    // how long to wait for the deployment to become healthy. If unset, DefaultDeploymentTimeout is used
+	DeploymentHealthIndication HealthIndication // How to determine if a deployment is healthy
+	DependencyList             []string
 }
 
 func (c *Chart) Name() string {

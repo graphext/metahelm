@@ -35,14 +35,24 @@ type GraphObject interface {
 	Dependencies() []string // names of dependencies, in any order
 }
 
+// LogFunc is a function that logs a formatted string somewhere
+type LogFunc func(string, ...interface{})
+
 // ObjectGraph builds and analyzes a graph of the supplied objects
 type ObjectGraph struct {
+	LogF    LogFunc
 	objs    []GraphObject
 	g       *simple.DirectedGraph
 	root    int64
 	idmap   map[int64]string
 	namemap map[string]int64
 	levels  [][]GraphObject
+}
+
+func (og *ObjectGraph) log(msg string, args ...interface{}) {
+	if og.LogF != nil {
+		og.LogF(msg, args...)
+	}
 }
 
 func (og *ObjectGraph) init() {
@@ -172,6 +182,10 @@ func (og *ObjectGraph) Build(objs []GraphObject) error {
 		return errors.Wrap(err, "error getting graph root")
 	}
 	og.calcLevels()
+	og.log("root: %v; levels: %v", og.idmap[og.root], len(og.levels))
+	for i, l := range og.levels {
+		og.log("level %v: %v", i, l)
+	}
 	return nil
 }
 
