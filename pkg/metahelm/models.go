@@ -1,6 +1,9 @@
 package metahelm
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // HealthIndication describes how to decide if a deployment is successful
 type HealthIndication int
@@ -33,7 +36,7 @@ func (c *Chart) Name() string {
 }
 
 func (c *Chart) String() string {
-	return c.Title
+	return fmt.Sprintf("\"%v\"", c.Title) // quoted to avoid DOT format problems
 }
 
 func (c *Chart) Dependencies() []string {
