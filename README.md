@@ -1,3 +1,9 @@
+[![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs]
+
+[godocs]: https://godoc.org/github.com/dollarshaveclub/metahelm
+
+[![CircleCI](https://circleci.com/gh/dollarshaveclub/metahelm.svg?style=svg&circle-token=f906b4f6996b06331f7872e99bd2eb8d26bee537)](https://circleci.com/gh/dollarshaveclub/metahelm)
+
 # Metahelm
 
 Metahelm is a CLI and library for installing dependency graphs of Helm charts.
