@@ -1,8 +1,5 @@
-[![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs]
-
-[godocs]: https://godoc.org/github.com/dollarshaveclub/metahelm
-
-[![CircleCI](https://circleci.com/gh/dollarshaveclub/metahelm.svg?style=svg&circle-token=f906b4f6996b06331f7872e99bd2eb8d26bee537)](https://circleci.com/gh/dollarshaveclub/metahelm)
+[![GoDoc](https://godoc.org/github.com/dollarshaveclub/metahelm?status.svg)](http://godoc.org/github.com/dollarshaveclub/metahelm)
+[![CircleCI](https://circleci.com/gh/dollarshaveclub/metahelm.svg?style=shield&circle-token=f906b4f6996b06331f7872e99bd2eb8d26bee537)](https://circleci.com/gh/dollarshaveclub/metahelm)
 
 # Metahelm
 
@@ -81,3 +78,19 @@ An example YAML input might look like the following:
   values_path: /home/releases/redis/values.yml
   primary_deployment: redis
 ```
+
+Which, using `metahelm plan -g` produces a graph like this:
+<img src="example-graph.png" width="324" height="251"/>
+
+...and an execution plan:
+
+```
+Graph Root: YOLO
+Phase 1: ["mysql" "postgres" "redis"]
+Phase 2: ["charlie" "alpha" "bravo"]
+Phase 3: ["YOLO"]
+```
+
+Phase 1 is installed first. The Mysql, postgres and redis charts would all be installed
+in parallel, and when they are all determined to be healthy, Phase 2 (charlie, alpha, bravo)
+would be installed in a similar fashion. Finally, Phase 3 (YOLO) would be installed.
