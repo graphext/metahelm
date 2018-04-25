@@ -21,8 +21,8 @@ order such that all dependencies are satisfied prior to each chart install.
 
 ## Sample YAML
 
-Ssay you have a primary application ("YOLO") that depends upon several
-microservices to be running for the primary app to start. If those microservices are calls
+Say you have a primary application ("YOLO") that depends upon several
+microservices to be running for the primary app to start. Those microservices are called
 "Alpha", "Bravo" and "Charlie". "Alpha" depends upon a MySQL database, "Bravo" needs
 PostgreSQL and all three need Redis.
 
