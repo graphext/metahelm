@@ -7,14 +7,9 @@ Metahelm is a CLI and library for installing dependency graphs of Helm charts.
 
 ## Why?
 
-With respect, Helm dependency handling...isn't great. It doesn't handle complex
-trees of dependencies very well; it simply creates all the Kubernetes objects
-essentially at once and waits for them all to settle into a consistent state.
+Helm dependency handling doesn't handle complex trees of dependencies well. It creates all Kubernetes objects at once and waits for them to settle into a consistent state.
 
-Unfortunately, with a complex set of dependency relationships, this often means
-one or more applications go into CrashLoopBackoff, greatly lengthening the time for
-the entire tree to come up. Sometimes they will completely fail when one or
-more applications give up entirely.
+With complex sets of dependency relationships, this means one or more applications go into CrashLoopBackoff, greatly lengthening the time for the entire tree to come up. Sometimes they will completely fail when one or more applications gives up entirely.
 
 ## What does Metahelm do?
 
@@ -26,9 +21,9 @@ order such that all dependencies are satisfied prior to each chart install.
 
 ## Sample YAML
 
-Let's say you have a primary application ("YOLO") that depends upon several
-microservices to be running for the primary app to start. Let's call those microservices
-"Alpha", "Bravo" and "Charlie". Alpha depends upon a MySQL database, Bravo needs
+Say you have a primary application ("YOLO") that depends upon several
+microservices to be running for the primary app to start. Those microservices are called
+"Alpha", "Bravo" and "Charlie". "Alpha" depends upon a MySQL database, "Bravo" needs
 PostgreSQL and all three need Redis.
 
 An example YAML input might look like the following:
@@ -79,7 +74,7 @@ An example YAML input might look like the following:
   primary_deployment: redis
 ```
 
-Which, using `metahelm plan -g` produces a graph like this:
+Using `metahelm plan -g` produces a graph like this:
 <img src="example-graph.png" width="324" height="251"/>
 
 ...and an execution plan:
@@ -91,6 +86,6 @@ Phase 2: ["charlie" "alpha" "bravo"]
 Phase 3: ["YOLO"]
 ```
 
-Phase 1 is installed first. The Mysql, postgres and redis charts would all be installed
-in parallel, and when they are all determined to be healthy, Phase 2 (charlie, alpha, bravo)
-would be installed in a similar fashion. Finally, Phase 3 (YOLO) would be installed.
+Phase 1 is installed first. The Mysql, postgres and redis charts would be installed
+in parallel. When they are all determined to be healthy, Phase 2 ("Charlie", "Alpha", "Bravo")
+would be installed in a similar fashion. Finally, Phase 3 ("YOLO") would be installed.
