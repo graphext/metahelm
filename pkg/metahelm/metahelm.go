@@ -183,7 +183,7 @@ func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOp
 	return rn.rmap, nil
 }
 
-var chartWaitPollInterval = 10 * time.Second
+var ChartWaitPollInterval = 10 * time.Second
 
 func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 	defer m.log("%v: done", c.Name())
@@ -191,7 +191,7 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 		m.log("%v: IgnorePodHealth, no health check needed", c.Name())
 		return nil
 	}
-	return wait.Poll(chartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
+	return wait.Poll(ChartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
 		d, err := m.K8c.ExtensionsV1beta1().Deployments(ns).Get(c.WaitUntilDeployment, metav1.GetOptions{})
 		if err != nil || d.Spec.Replicas == nil {
 			return false, errors.Wrap(err, "error getting deployment")
@@ -212,4 +212,31 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 		}
 		return false, nil
 	})
+}
+
+// ValidateCharts verifies that a set of charts is constructed properly, particularly with respect
+// to dependencies. It does not check to see if the referenced charts exist in the local filesystem.
+func ValidateCharts(charts []Chart) error {
+	objs := []dag.GraphObject{}
+	for i := range charts {
+		if charts[i].Title == "" {
+			return fmt.Errorf("empty title at offset %v", i)
+		}
+		if charts[i].Location == "" {
+			return fmt.Errorf("empty location at offset %v", i)
+		}
+		switch charts[i].DeploymentHealthIndication {
+		case IgnorePodHealth:
+		case AllPodsHealthy:
+		case AtLeastOnePodHealthy:
+		default:
+			return fmt.Errorf("unknown value for DeploymentHealthIndication at offset %v: %v", i, charts[i].DeploymentHealthIndication)
+		}
+		objs = append(objs, &charts[i])
+	}
+	og := dag.ObjectGraph{}
+	if err := og.Build(objs); err != nil {
+		return errors.Wrap(err, "error building graph from charts")
+	}
+	return nil
 }

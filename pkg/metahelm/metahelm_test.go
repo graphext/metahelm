@@ -82,7 +82,7 @@ func TestGraphInstall(t *testing.T) {
 		K8c:  fkc,
 		HC:   fhc,
 	}
-	chartWaitPollInterval = 1 * time.Second
+	ChartWaitPollInterval = 1 * time.Second
 	rm, err := m.Install(context.Background(), testCharts)
 	if err != nil {
 		t.Fatalf("error installing: %v", err)
@@ -97,7 +97,7 @@ func TestGraphInstallWaitCallback(t *testing.T) {
 		K8c: fkc,
 		HC:  fhc,
 	}
-	chartWaitPollInterval = 1 * time.Second
+	ChartWaitPollInterval = 1 * time.Second
 	var i int
 	cb := func(c Chart) InstallCallbackAction {
 		if c.Name() != testCharts[1].Name() {
@@ -126,7 +126,7 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 		K8c: fkc,
 		HC:  fhc,
 	}
-	chartWaitPollInterval = 1 * time.Second
+	ChartWaitPollInterval = 1 * time.Second
 	var i int
 	cb := func(c Chart) InstallCallbackAction {
 		i++
@@ -142,5 +142,63 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 	}
 	if i != 1 {
 		t.Fatalf("bad callback count: %v", i)
+	}
+}
+
+func TestValidateCharts(t *testing.T) {
+	charts := []Chart{
+		Chart{
+			Title:                      "toplevel",
+			Location:                   "/foo",
+			WaitUntilDeployment:        "toplevel",
+			DeploymentHealthIndication: IgnorePodHealth,
+			DependencyList:             []string{"someservice", "anotherthing", "redis"},
+		},
+		Chart{
+			Title:                      "someservice",
+			Location:                   "/foo",
+			WaitUntilDeployment:        "someservice",
+			DeploymentHealthIndication: IgnorePodHealth,
+		},
+		Chart{
+			Title:                      "anotherthing",
+			Location:                   "/foo",
+			WaitUntilDeployment:        "anotherthing",
+			DeploymentHealthIndication: AllPodsHealthy,
+			WaitTimeout:                2 * time.Second,
+			DependencyList:             []string{"redis"},
+		},
+		Chart{
+			Title:                      "redis",
+			Location:                   "/foo",
+			DeploymentHealthIndication: IgnorePodHealth,
+		},
+	}
+	if err := ValidateCharts(charts); err != nil {
+		t.Fatalf("should have succeeded: %v", err)
+	}
+	charts[3].DependencyList = []string{"anotherthing"}
+	if err := ValidateCharts(charts); err == nil {
+		t.Fatalf("should have failed with dependency cycle")
+	}
+	charts[3].DependencyList = nil
+	charts[3].Title = ""
+	if err := ValidateCharts(charts); err == nil {
+		t.Fatalf("should have failed with empty title")
+	}
+	charts[3].Title = "redis"
+	charts[3].Location = ""
+	if err := ValidateCharts(charts); err == nil {
+		t.Fatalf("should have failed with empty location")
+	}
+	charts[3].Location = "/foo"
+	charts[3].DeploymentHealthIndication = 9999
+	if err := ValidateCharts(charts); err == nil {
+		t.Fatalf("should have failed with invalid DeploymentHealthIndication")
+	}
+	charts[3].DeploymentHealthIndication = IgnorePodHealth
+	charts[3].DependencyList = []string{"doesntexist"}
+	if err := ValidateCharts(charts); err == nil {
+		t.Fatalf("should have failed with unknown dependency")
 	}
 }
