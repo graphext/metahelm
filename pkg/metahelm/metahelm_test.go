@@ -2,6 +2,7 @@ package metahelm
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	mtypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/helm/pkg/helm"
+	rls "k8s.io/helm/pkg/proto/hapi/release"
 )
 
 var testCharts = []Chart{
@@ -200,5 +202,52 @@ func TestValidateCharts(t *testing.T) {
 	charts[3].DependencyList = []string{"doesntexist"}
 	if err := ValidateCharts(charts); err == nil {
 		t.Fatalf("should have failed with unknown dependency")
+	}
+}
+
+func TestGraphUpgrade(t *testing.T) {
+	fkc := fake.NewSimpleClientset(gentestobjs()...)
+	fhc := &helm.FakeClient{}
+	m := Manager{
+		LogF: t.Logf,
+		K8c:  fkc,
+		HC:   fhc,
+	}
+	ChartWaitPollInterval = 1 * time.Second
+	um := ReleaseMap{}
+	rels := []*rls.Release{}
+	for i, c := range testCharts {
+		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
+		um[c.Title] = rn
+		rels = append(rels, &rls.Release{Name: rn})
+	}
+	fhc.Rels = rels
+	err := m.Upgrade(context.Background(), um, testCharts)
+	if err != nil {
+		t.Fatalf("error upgrading: %v", err)
+	}
+}
+
+func TestGraphUpgradeMissingRelease(t *testing.T) {
+	fkc := fake.NewSimpleClientset(gentestobjs()...)
+	fhc := &helm.FakeClient{}
+	m := Manager{
+		LogF: t.Logf,
+		K8c:  fkc,
+		HC:   fhc,
+	}
+	ChartWaitPollInterval = 1 * time.Second
+	um := ReleaseMap{}
+	rels := []*rls.Release{}
+	for i, c := range testCharts {
+		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
+		um[c.Title] = rn
+		rels = append(rels, &rls.Release{Name: rn})
+	}
+	fhc.Rels = rels
+	delete(um, testCharts[0].Title)
+	err := m.Upgrade(context.Background(), um, testCharts)
+	if err == nil {
+		t.Fatalf("should have failed")
 	}
 }
