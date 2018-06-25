@@ -862,6 +862,7 @@
     "pkg/proto/hapi/release",
     "pkg/proto/hapi/services",
     "pkg/proto/hapi/version",
+    "pkg/strvals",
     "pkg/sympath",
     "pkg/version"
   ]
@@ -1061,6 +1062,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1fd13e5d47c1b2905db81a9c6c71c4b206188b486b1fbafc63ae12695db37194"
+  inputs-digest = "503337b9f13b69237d1853d724747e67b882ed266f503358aae06fa24449480f"
   solver-name = "gps-cdcl"
   solver-version = 1
