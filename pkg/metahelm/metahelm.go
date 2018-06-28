@@ -24,6 +24,7 @@ type K8sClient interface {
 // HelmClient describes an object that functions as a Helm client
 type HelmClient interface {
 	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
+	UpdateRelease(rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
 }
 
 // LogFunc is a function that logs a formatted string somewhere
@@ -103,6 +104,22 @@ var retryDelay = 10 * time.Second
 
 // Install installs charts in order according to dependencies and returns the names of the releases, or error
 func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
+	return m.installOrUpgrade(ctx, nil, false, charts, opts...)
+}
+
+// Upgrade upgrades charts in order according to dependencies, using the release names in rmap. ValueOverrides will be used in the upgrade.
+func (m *Manager) Upgrade(ctx context.Context, rmap ReleaseMap, charts []Chart, opts ...InstallOption) error {
+	for _, c := range charts {
+		if _, ok := rmap[c.Title]; !ok {
+			return fmt.Errorf("chart title missing from release map: %v", c.Title)
+		}
+	}
+	_, err := m.installOrUpgrade(ctx, rmap, true, charts, opts...)
+	return err
+}
+
+// installOrUpgrade does helm installs/upgrades in DAG order
+func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, upgrade bool, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
 	ops := &options{}
 	for _, opt := range opts {
 		opt(ops)
@@ -166,15 +183,30 @@ func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOp
 			}
 		}
 		c := cmap[obj.Name()]
-		m.log("%v: running helm install", obj.Name())
-		resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace, helm.ValueOverrides(c.ValueOverrides))
-		if err != nil {
-			return errors.Wrap(err, "error installing chart")
+		var opstr string
+		if upgrade {
+			relname, ok := upgradeMap[c.Title]
+			if !ok {
+				return fmt.Errorf("chart not found in release map: %v", c.Title)
+			}
+			opstr = "upgrade"
+			m.log("%v: running helm upgrade", obj.Name())
+			_, err := m.HC.UpdateRelease(relname, c.Location, helm.UpdateValueOverrides(c.ValueOverrides))
+			if err != nil {
+				return errors.Wrap(err, "error upgrading release")
+			}
+		} else {
+			opstr = "installation"
+			m.log("%v: running helm install", obj.Name())
+			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace, helm.ValueOverrides(c.ValueOverrides))
+			if err != nil {
+				return errors.Wrap(err, "error installing chart")
+			}
+			rn.Lock()
+			rn.rmap[c.Title] = resp.Release.Name
+			rn.Unlock()
 		}
-		rn.Lock()
-		rn.rmap[c.Title] = resp.Release.Name
-		rn.Unlock()
-		m.log("%v: installation complete; waiting for health", obj.Name())
+		m.log("%v: %v complete; waiting for health", opstr, obj.Name())
 		return m.waitForChart(ctx, c, ops.k8sNamespace)
 	}
 	if err := og.Walk(ctx, af); err != nil {
