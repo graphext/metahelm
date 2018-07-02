@@ -201,31 +201,7 @@ func (mounter *Mounter) MakeRShared(path string) error {
 
 // GetFileType checks for sockets/block/character devices
 func (mounter *Mounter) GetFileType(pathname string) (FileType, error) {
-	var pathType FileType
-	info, err := os.Stat(pathname)
-	if os.IsNotExist(err) {
-		return pathType, fmt.Errorf("path %q does not exist", pathname)
-	}
-	// err in call to os.Stat
-	if err != nil {
-		return pathType, err
-	}
-
-	mode := info.Sys().(*syscall.Win32FileAttributeData).FileAttributes
-	switch mode & syscall.S_IFMT {
-	case syscall.S_IFSOCK:
-		return FileTypeSocket, nil
-	case syscall.S_IFBLK:
-		return FileTypeBlockDev, nil
-	case syscall.S_IFCHR:
-		return FileTypeCharDev, nil
-	case syscall.S_IFDIR:
-		return FileTypeDirectory, nil
-	case syscall.S_IFREG:
-		return FileTypeFile, nil
-	}
-
-	return pathType, fmt.Errorf("only recognise file, directory, socket, block device and character device")
+	return getFileType(pathname)
 }
 
 // MakeFile creates a new directory
@@ -382,9 +358,22 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	glog.V(4).Infof("Attempting to formatAndMount disk: %s %s %s", fstype, source, target)
 
 	if err := ValidateDiskNumber(source); err != nil {
-		glog.Errorf("azureMount: formatAndMount failed, err: %v\n", err)
+		glog.Errorf("diskMount: formatAndMount failed, err: %v", err)
 		return err
 	}
+
+	if len(fstype) == 0 {
+		// Use 'NTFS' as the default
+		fstype = "NTFS"
+	}
+
+	// format disk if it is unformatted(raw)
+	cmd := fmt.Sprintf("Get-Disk -Number %s | Where partitionstyle -eq 'raw' | Initialize-Disk -PartitionStyle MBR -PassThru"+
+		" | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem %s -Confirm:$false", source, fstype)
+	if output, err := mounter.Exec.Run("powershell", "/c", cmd); err != nil {
+		return fmt.Errorf("diskMount: format disk failed, error: %v, output: %q", err, string(output))
+	}
+	glog.V(4).Infof("diskMount: Disk successfully formatted, disk: %q, fstype: %q", source, fstype)
 
 	driveLetter, err := getDriveLetterByDiskNumber(source, mounter.Exec)
 	if err != nil {
@@ -460,6 +449,11 @@ func getAllParentLinks(path string) ([]string, error) {
 	}
 
 	return links, nil
+}
+
+func (mounter *Mounter) GetSELinuxSupport(pathname string) (bool, error) {
+	// Windows does not support SELinux.
+	return false, nil
 }
 
 // SafeMakeDir makes sure that the created directory does not escape given base directory mis-using symlinks.
