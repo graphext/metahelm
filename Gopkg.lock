@@ -866,8 +866,8 @@
     "pkg/sympath",
     "pkg/version"
   ]
-  revision = "f6025bb9ee7daf9fee0026541c90a6f557a3e0bc"
-  version = "v2.9.0"
+  revision = "20adb27c7c5868466912eebdf6664e7390ebe710"
+  version = "v2.9.1"
 
 [[projects]]
   branch = "master"
@@ -1062,6 +1062,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "0da1f77fe673f379ee78705da1e7bf3a214f932224f03eba585e4a308f8c5317"
+  inputs-digest = "0dd53848df06240bf6b8c715ddf9b99161fb99eafcbc50f3723b992a97d459fb"
   solver-name = "gps-cdcl"
   solver-version = 1
