@@ -226,7 +226,7 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 	return wait.Poll(ChartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
 		d, err := m.K8c.ExtensionsV1beta1().Deployments(ns).Get(c.WaitUntilDeployment, metav1.GetOptions{})
 		if err != nil || d.Spec.Replicas == nil {
-			m.log("%v: error getting deployment (retrying)", c.Name())
+			m.log("%v: error getting deployment (retrying): %v", c.Name(), err)
 			return false, nil // the deployment may not initially exist immediately after installing chart
 		}
 
