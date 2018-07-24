@@ -44,9 +44,8 @@ func (m *Manager) log(msg string, args ...interface{}) {
 }
 
 type options struct {
-	k8sNamespace    string
-	tillerNamespace string
-	installCallback InstallCallback
+	k8sNamespace, tillerNamespace, releaseNamePrefix string
+	installCallback                                  InstallCallback
 }
 
 type InstallOption func(*options)
@@ -62,6 +61,13 @@ func WithK8sNamespace(ns string) InstallOption {
 func WithTillerNamespace(tns string) InstallOption {
 	return func(op *options) {
 		op.tillerNamespace = tns
+	}
+}
+
+// WithReleaseNamePrefix specifies a prefix to use in Helm release names (useful for when multiple instances of a chart graph are installed into the same namespace)
+func WithReleaseNamePrefix(pfx string) InstallOption {
+	return func(op *options) {
+		op.releaseNamePrefix = pfx
 	}
 }
 
@@ -191,14 +197,22 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			}
 			opstr = "upgrade"
 			m.log("%v: running helm upgrade", obj.Name())
-			_, err := m.HC.UpdateRelease(relname, c.Location, helm.UpdateValueOverrides(c.ValueOverrides))
+			_, err := m.HC.UpdateRelease(relname, c.Location,
+				helm.UpdateValueOverrides(c.ValueOverrides),
+				helm.ReuseValues(true),
+				helm.UpgradeWait(c.WaitUntilHelmSaysItsReady),
+				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
 				return errors.Wrap(err, "error upgrading release")
 			}
 		} else {
 			opstr = "installation"
 			m.log("%v: running helm install", obj.Name())
-			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace, helm.ValueOverrides(c.ValueOverrides))
+			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace,
+				helm.ValueOverrides(c.ValueOverrides),
+				helm.ReleaseName(ops.releaseNamePrefix+c.Title),
+				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
+				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
 				return errors.Wrap(err, "error installing chart")
 			}
@@ -219,6 +233,10 @@ var ChartWaitPollInterval = 10 * time.Second
 
 func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 	defer m.log("%v: done", c.Name())
+	if c.WaitUntilHelmSaysItsReady {
+		m.log("%v: helm waited until it thought the chart installation was healthy; done")
+		return nil
+	}
 	if c.DeploymentHealthIndication == IgnorePodHealth {
 		m.log("%v: IgnorePodHealth, no health check needed", c.Name())
 		return nil

@@ -25,6 +25,7 @@ type Chart struct {
 	Title                      string           // unique name for this chart (must not collide with any dependencies)
 	Location                   string           // local filesystem location
 	ValueOverrides             []byte           // value overrides as raw YAML stream
+	WaitUntilHelmSaysItsReady  bool             // wait until Helm thinks the chart is ready. This overrides WaitUntilDeployment and DeploymentHealthIndication.
 	WaitUntilDeployment        string           // Deployment name that, when healthy, indicates chart install has succeeded
 	WaitTimeout                time.Duration    // how long to wait for the deployment to become healthy. If unset, DefaultDeploymentTimeout is used
 	DeploymentHealthIndication HealthIndication // How to determine if a deployment is healthy
