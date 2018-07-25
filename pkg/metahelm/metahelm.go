@@ -234,7 +234,7 @@ var ChartWaitPollInterval = 10 * time.Second
 func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 	defer m.log("%v: done", c.Name())
 	if c.WaitUntilHelmSaysItsReady {
-		m.log("%v: helm waited until it thought the chart installation was healthy; done")
+		m.log("%v: helm waited until it thought the chart installation was healthy; done", c.Name())
 		return nil
 	}
 	if c.DeploymentHealthIndication == IgnorePodHealth {
