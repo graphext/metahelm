@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -249,5 +250,35 @@ func TestGraphUpgradeMissingRelease(t *testing.T) {
 	err := m.Upgrade(context.Background(), um, testCharts)
 	if err == nil {
 		t.Fatalf("should have failed")
+	}
+}
+
+func TestReleaseName(t *testing.T) {
+	cases := []struct {
+		name, input string
+	}{
+		{
+			"short", "some-release-name",
+		},
+		{
+			"long", "this-is-an-exceedingly-long-release-name-that-would-fail-installation",
+		},
+		{
+			"short unicode", "⌘日本語-name",
+		},
+		{
+			"long unicode", "⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-⌘日本語-long-name",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := releaseName(c.input)
+			if i := utf8.RuneCountInString(out); i > 53 {
+				t.Fatalf("length exceeds max of 53: %v", i)
+			}
+			if out == "" {
+				t.Fatalf("blank output")
+			}
+		})
 	}
 }
