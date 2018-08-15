@@ -3,6 +3,7 @@ package metahelm
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -124,6 +125,17 @@ func (m *Manager) Upgrade(ctx context.Context, rmap ReleaseMap, charts []Chart, 
 	return err
 }
 
+// releaseName returns a release name of not more than 53 characters. If the input is truncated, a random number is added to ensure uniqueness.
+func releaseName(input string) string {
+	rsl := []rune(input)
+	if len(rsl) < 54 {
+		return input
+	}
+	out := rsl[0 : 53-6]
+	rand.Seed(time.Now().UTC().UnixNano())
+	return fmt.Sprintf("%v-%d", string(out), rand.Intn(99999))
+}
+
 // installOrUpgrade does helm installs/upgrades in DAG order
 func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, upgrade bool, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
 	ops := &options{}
@@ -210,7 +222,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			m.log("%v: running helm install", obj.Name())
 			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace,
 				helm.ValueOverrides(c.ValueOverrides),
-				helm.ReleaseName(ops.releaseNamePrefix+c.Title),
+				helm.ReleaseName(releaseName(ops.releaseNamePrefix+c.Title)),
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
 				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
