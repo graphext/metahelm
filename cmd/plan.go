@@ -22,7 +22,7 @@ order with graph levels, and optionally a visual image of the graph.`,
 
 var opencmd = "<unknown>"
 var dotcmd string
-var genpng bool
+var genpng, validate bool
 
 func init() {
 	switch runtime.GOOS {
@@ -36,6 +36,7 @@ func init() {
 	planCmd.Flags().StringVar(&opencmd, "open-cmd", opencmd, "open CLI command")
 	planCmd.Flags().StringVar(&dotcmd, "dot-cmd", "dot", "dot CLI command (to generate PNG)")
 	planCmd.Flags().BoolVarP(&genpng, "gen-png", "g", false, "generate and display PNG graph")
+	planCmd.Flags().BoolVar(&validate, "validate", true, "validate charts")
 	RootCmd.AddCommand(planCmd)
 }
 
@@ -44,7 +45,7 @@ func plan(cmd *cobra.Command, args []string) {
 		clierr("input file is required")
 	}
 	fp := args[len(args)-1]
-	cds, err := readAndValidateFile(fp)
+	cds, err := readAndValidateFile(fp, validate)
 	if err != nil {
 		clierr("error reading input: %v", err)
 	}

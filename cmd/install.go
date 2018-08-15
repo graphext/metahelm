@@ -91,7 +91,7 @@ func validateChart(c ChartDefinition) error {
 	return nil
 }
 
-func readAndValidateFile(f string) ([]ChartDefinition, error) {
+func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 	b, err := ioutil.ReadFile(f)
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading file")
@@ -103,9 +103,11 @@ func readAndValidateFile(f string) ([]ChartDefinition, error) {
 	if len(charts) == 0 {
 		return nil, errors.New("file is empty")
 	}
-	for i, c := range charts {
-		if err := validateChart(c); err != nil {
-			return nil, errors.Wrapf(err, "error validating chart at offset %v", i)
+	if validate {
+		for i, c := range charts {
+			if err := validateChart(c); err != nil {
+				return nil, errors.Wrapf(err, "error validating chart at offset %v", i)
+			}
 		}
 	}
 	return charts, nil
@@ -201,7 +203,7 @@ func install(cmd *cobra.Command, args []string) {
 		clierr("input file is required")
 	}
 	fp := args[len(args)-1]
-	cds, err := readAndValidateFile(fp)
+	cds, err := readAndValidateFile(fp, true)
 	if err != nil {
 		clierr("error reading input: %v", err)
 	}
