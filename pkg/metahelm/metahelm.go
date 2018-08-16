@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dollarshaveclub/metahelm/pkg/dag"
+	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -208,12 +209,22 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				return fmt.Errorf("chart not found in release map: %v", c.Title)
 			}
 			opstr = "upgrade"
-			m.log("%v: running helm upgrade", obj.Name())
-			_, err := m.HC.UpdateRelease(relname, c.Location,
-				helm.UpdateValueOverrides(c.ValueOverrides),
+			ops := []helm.UpdateOption{
 				helm.ReuseValues(true),
 				helm.UpgradeWait(c.WaitUntilHelmSaysItsReady),
-				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())))
+				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())),
+			}
+			// work around a bug in helm 2.9 that causes a YAML error with empty overrides and ReuseValues
+			vo := map[string]interface{}{}
+			err := yaml.Unmarshal(c.ValueOverrides, &vo)
+			if err != nil {
+				return errors.Wrap(err, "error unmarshaling value overrides")
+			}
+			if len(vo) != 0 {
+				ops = append(ops, helm.UpdateValueOverrides(c.ValueOverrides))
+			}
+			m.log("%v: running helm upgrade", obj.Name())
+			_, err = m.HC.UpdateRelease(relname, c.Location, ops...)
 			if err != nil {
 				return errors.Wrap(err, "error upgrading release")
 			}
