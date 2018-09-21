@@ -256,16 +256,12 @@ func install(cmd *cobra.Command, args []string) {
 }
 
 func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
-
 	var options []metahelm.InstallOption
-
 	if instConfig.tillerNS != "" {
 		options = append(options, metahelm.WithTillerNamespace(instConfig.tillerNS))
 	}
-
 	if instConfig.k8sNS != "" {
 		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
 	}
-
 	return options
 }
