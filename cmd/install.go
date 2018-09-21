@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
@@ -103,6 +106,10 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 	if len(charts) == 0 {
 		return nil, errors.New("file is empty")
 	}
+
+	baseDir := filepath.Dir(f)
+	expandChartFilesPath(charts, baseDir)
+
 	if validate {
 		for i, c := range charts {
 			if err := validateChart(c); err != nil {
@@ -111,6 +118,23 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 		}
 	}
 	return charts, nil
+}
+
+// expandChartFilesPath expands relative file path for charts and values
+func expandChartFilesPath(charts []ChartDefinition, baseDir string) {
+	for i, _ := range charts {
+		c := &charts[i]
+		c.ValuesPath = expandFilePath(c.ValuesPath, baseDir)
+		c.Path = expandFilePath(c.Path, baseDir)
+	}
+}
+
+// expandFilePath expands relative file path using specified base directory
+func expandFilePath(filePath string, baseDir string) string {
+	if !strings.HasPrefix(filePath, "/") {
+		filePath = path.Join(baseDir, filePath)
+	}
+	return filePath
 }
 
 func chartDefToChart(cd ChartDefinition) (metahelm.Chart, error) {
@@ -221,7 +245,7 @@ func install(cmd *cobra.Command, args []string) {
 		K8c:  kc,
 		LogF: log.Printf,
 	}
-	rm, err := m.Install(context.Background(), cs)
+	rm, err := m.Install(context.Background(), cs, instConfig.ToInstallOptions()...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error running installations: %v\n", err)
 		return
@@ -229,4 +253,15 @@ func install(cmd *cobra.Command, args []string) {
 	for k, v := range rm {
 		fmt.Printf("Chart: %v => release: %v\n", k, v)
 	}
+}
+
+func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
+	var options []metahelm.InstallOption
+	if instConfig.tillerNS != "" {
+		options = append(options, metahelm.WithTillerNamespace(instConfig.tillerNS))
+	}
+	if instConfig.k8sNS != "" {
+		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
+	}
+	return options
 }
