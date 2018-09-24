@@ -272,7 +272,7 @@ func TestReleaseName(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out := releaseName(c.input)
+			out := ReleaseName(c.input)
 			if i := utf8.RuneCountInString(out); i > 53 {
 				t.Fatalf("length exceeds max of 53: %v", i)
 			}
