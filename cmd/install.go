@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
@@ -39,10 +42,12 @@ type ChartDefinition struct {
 }
 
 type installCfg struct {
-	tillerNS      string
-	tillerTimeout time.Duration
-	k8sCtx        string
-	k8sNS         string
+	upgrade           bool
+	tillerNS          string
+	tillerTimeout     time.Duration
+	k8sCtx            string
+	k8sNS             string
+	releaseNamePrefix string
 }
 
 var instConfig installCfg
@@ -56,10 +61,12 @@ var installCmd = &cobra.Command{
 }
 
 func init() {
+	installCmd.Flags().BoolVar(&instConfig.upgrade, "upgrade", false, "Upgrade release if release exists")
 	installCmd.Flags().DurationVar(&instConfig.tillerTimeout, "tiller-timeout", 90*time.Second, "Tiller connect timeout")
 	installCmd.Flags().StringVar(&instConfig.tillerNS, "tiller-namespace", "kube-system", "k8s namespace where Tiller can be found")
 	installCmd.Flags().StringVar(&instConfig.k8sNS, "k8s-namespace", "", "k8s namespace into which to install charts")
 	installCmd.Flags().StringVar(&instConfig.k8sCtx, "k8s-ctx", "", "k8s context")
+	installCmd.Flags().StringVar(&instConfig.releaseNamePrefix, "release-name-prefix", "", "Release name prefix")
 	RootCmd.AddCommand(installCmd)
 }
 
@@ -103,6 +110,10 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 	if len(charts) == 0 {
 		return nil, errors.New("file is empty")
 	}
+
+	baseDir := filepath.Dir(f)
+	expandChartFilesPath(charts, baseDir)
+
 	if validate {
 		for i, c := range charts {
 			if err := validateChart(c); err != nil {
@@ -111,6 +122,23 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 		}
 	}
 	return charts, nil
+}
+
+// expandChartFilesPath expands relative file path for charts and values
+func expandChartFilesPath(charts []ChartDefinition, baseDir string) {
+	for i, _ := range charts {
+		c := &charts[i]
+		c.ValuesPath = expandFilePath(c.ValuesPath, baseDir)
+		c.Path = expandFilePath(c.Path, baseDir)
+	}
+}
+
+// expandFilePath expands relative file path using specified base directory
+func expandFilePath(filePath string, baseDir string) string {
+	if !strings.HasPrefix(filePath, "/") {
+		filePath = path.Join(baseDir, filePath)
+	}
+	return filePath
 }
 
 func chartDefToChart(cd ChartDefinition) (metahelm.Chart, error) {
@@ -221,7 +249,14 @@ func install(cmd *cobra.Command, args []string) {
 		K8c:  kc,
 		LogF: log.Printf,
 	}
-	rm, err := m.Install(context.Background(), cs)
+	var rm metahelm.ReleaseMap
+	if instConfig.upgrade {
+		rm = buildReleaseMap(instConfig, cs)
+		err = m.Upgrade(context.Background(), rm, cs, instConfig.ToInstallOptions()...)
+	} else {
+		rm, err = m.Install(context.Background(), cs, instConfig.ToInstallOptions()...)
+	}
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error running installations: %v\n", err)
 		return
@@ -229,4 +264,26 @@ func install(cmd *cobra.Command, args []string) {
 	for k, v := range rm {
 		fmt.Printf("Chart: %v => release: %v\n", k, v)
 	}
+}
+
+// buildReleaseMap build the release title to releaseName map using user input and charts definitions
+func buildReleaseMap(instConfig installCfg, cs []metahelm.Chart) metahelm.ReleaseMap {
+	rm := make(map[string]string)
+	for _, c := range cs {
+		if _, ok := rm[c.Title]; !ok {
+			rm[c.Title] = metahelm.ReleaseName(instConfig.releaseNamePrefix + c.Title)
+		}
+	}
+	return rm
+}
+
+func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
+	var options []metahelm.InstallOption
+	if instConfig.tillerNS != "" {
+		options = append(options, metahelm.WithTillerNamespace(instConfig.tillerNS))
+	}
+	if instConfig.k8sNS != "" {
+		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
+	}
+	return options
 }

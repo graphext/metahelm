@@ -32,6 +32,7 @@ type K8sClient interface {
 type HelmClient interface {
 	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
 	UpdateRelease(rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
+	ListReleases(opts ...helm.ReleaseListOption) (*rls.ListReleasesResponse, error)
 }
 
 // LogFunc is a function that logs a formatted string somewhere
@@ -136,7 +137,7 @@ func (m *Manager) Upgrade(ctx context.Context, rmap ReleaseMap, charts []Chart, 
 }
 
 // releaseName returns a release name of not more than 53 characters. If the input is truncated, a random number is added to ensure uniqueness.
-func releaseName(input string) string {
+func ReleaseName(input string) string {
 	rsl := []rune(input)
 	if len(rsl) < 54 {
 		return input
@@ -215,7 +216,15 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 		}
 		c := cmap[obj.Name()]
 		var opstr string
+		var exist bool
 		if upgrade {
+			var err error
+			exist, err = releaseExists(m.HC, ops.k8sNamespace, ops.releaseNamePrefix+c.Title)
+			if err != nil {
+				return errors.Wrap(err, "error error getting release names")
+			}
+		}
+		if upgrade && exist {
 			relname, ok := upgradeMap[c.Title]
 			if !ok {
 				return fmt.Errorf("chart not found in release map: %v", c.Title)
@@ -245,7 +254,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			m.log("%v: running helm install", obj.Name())
 			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace,
 				helm.ValueOverrides(c.ValueOverrides),
-				helm.ReleaseName(releaseName(ops.releaseNamePrefix+c.Title)),
+				helm.ReleaseName(ReleaseName(ops.releaseNamePrefix+c.Title)),
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
 				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
@@ -317,6 +326,15 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 		}
 		return false, nil
 	})
+}
+
+func releaseExists(helmClient HelmClient, namespace string, releaseName string) (bool, error) {
+	releases, err := helmClient.ListReleases(helm.ReleaseListNamespace(namespace), helm.ReleaseListFilter("^"+releaseName+"$"))
+	if err != nil {
+		return false, errors.Wrap(err, "error getting release name")
+	}
+
+	return releases != nil && releases.Count == 1, nil
 }
 
 // ValidateCharts verifies that a set of charts is constructed properly, particularly with respect
