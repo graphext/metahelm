@@ -116,15 +116,15 @@ const DefaultK8sNamespace = "default"
 var retryDelay = 10 * time.Second
 
 // Install installs charts in order according to dependencies and returns the names of the releases, or error.
-// In the event of an error, the client can type assert that the error returned is of type ChartError, which then provides information on precisely which
-// kubernetes objects caused failure, if that can be determined.
+// In the event of an error, the client can check if the error returned is of type ChartError, which then provides information on the kubernetes objects
+// that caused failure, if this can be determined. A helm error unrelated to pod failure may return either a non-ChartError error value or an empty ChartError.
 func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
 	return m.installOrUpgrade(ctx, nil, false, charts, opts...)
 }
 
 // Upgrade upgrades charts in order according to dependencies, using the release names in rmap. ValueOverrides will be used in the upgrade.
-// In the event of an error, the client can type assert that the error returned is of type ChartError, which then provides information on precisely which
-// kubernetes objects caused failure, if that can be determined.
+// In the event of an error, the client can check if the error returned is of type ChartError, which then provides information on the kubernetes objects
+// that caused failure, if this can be determined. A helm error unrelated to pod failure may return either a non-ChartError error value or an empty ChartError.
 func (m *Manager) Upgrade(ctx context.Context, rmap ReleaseMap, charts []Chart, opts ...InstallOption) error {
 	for _, c := range charts {
 		if _, ok := rmap[c.Title]; !ok {
