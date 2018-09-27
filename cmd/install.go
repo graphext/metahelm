@@ -126,7 +126,7 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 
 // expandChartFilesPath expands relative file path for charts and values
 func expandChartFilesPath(charts []ChartDefinition, baseDir string) {
-	for i, _ := range charts {
+	for i := range charts {
 		c := &charts[i]
 		c.ValuesPath = expandFilePath(c.ValuesPath, baseDir)
 		c.Path = expandFilePath(c.Path, baseDir)
@@ -258,6 +258,9 @@ func install(cmd *cobra.Command, args []string) {
 	}
 
 	if err != nil {
+		if ce, ok := err.(metahelm.ChartError); ok {
+			displayChartError(ce)
+		}
 		fmt.Fprintf(os.Stderr, "error running installations: %v\n", err)
 		return
 	}
@@ -286,4 +289,43 @@ func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
 		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
 	}
 	return options
+}
+
+func displayChartError(ce metahelm.ChartError) {
+	printFailedPods := func(t, k string, v []metahelm.FailedPod) {
+		fmt.Printf("%v: %v\n", t, k)
+		for _, fp := range v {
+			fmt.Printf("\tPod: %v\n", fp.Name)
+			fmt.Printf("\tPhase: %v\n", fp.Phase)
+			fmt.Printf("\tReason: %v\n", fp.Reason)
+			fmt.Printf("\tMessage: %v\n", fp.Message)
+			fmt.Printf("\tConditions: %+v\n", fp.Conditions)
+			fmt.Printf("\tContainer Statuses: %+v\n", fp.ContainerStatuses)
+			fmt.Printf("\tContainer Logs:\n")
+			for name, logs := range fp.Logs {
+				fmt.Printf("\tContainer: %v\n", name)
+				fmt.Printf("\tLogs:\n")
+				os.Stdout.Write(logs)
+				fmt.Printf("\n\n")
+			}
+		}
+	}
+	if len(ce.FailedDeployments) > 0 {
+		fmt.Printf("FAILED DEPLOYMENTS:\n===================\n")
+		for k, v := range ce.FailedDeployments {
+			printFailedPods("Deployment", k, v)
+		}
+	}
+	if len(ce.FailedJobs) > 0 {
+		fmt.Printf("FAILED JOBS:\n===================\n")
+		for k, v := range ce.FailedJobs {
+			printFailedPods("Job", k, v)
+		}
+	}
+	if len(ce.FailedDaemonSets) > 0 {
+		fmt.Printf("FAILED DAEMONSETS:\n===================\n")
+		for k, v := range ce.FailedDaemonSets {
+			printFailedPods("DaemonSet", k, v)
+		}
+	}
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// installCmd represents the install command
+// RootCmd represents the root command
 var RootCmd = &cobra.Command{
 	Use:   "metahelm",
 	Short: "Manage graphs of Helm charts",
