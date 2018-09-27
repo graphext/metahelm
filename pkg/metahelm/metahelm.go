@@ -277,15 +277,15 @@ func (m *Manager) charterror(err error, namespace string, c *Chart, rls *release
 	ce := NewChartError(err)
 	if c.WaitUntilHelmSaysItsReady {
 		if rls != nil {
-			if err := ce.PopulateFromRelease(rls, m.K8c, MaxPodLogLines); err != nil {
-				m.log("error populating chart error from release: %v", err)
+			if err2 := ce.PopulateFromRelease(rls, m.K8c, MaxPodLogLines); err2 != nil {
+				m.log("error populating chart error from release: %v", err2)
 				return errors.Wrap(err, "error "+operation+" chart")
 			}
 		}
 		return ce
 	}
-	if err := ce.PopulateFromDeployment(namespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err != nil {
-		m.log("error populating chart error from deployment: %v", err)
+	if err2 := ce.PopulateFromDeployment(namespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err2 != nil {
+		m.log("error populating chart error from deployment: %v", err2)
 		return errors.Wrap(err, "error "+operation+" chart")
 	}
 	return ce
