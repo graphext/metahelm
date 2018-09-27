@@ -5,35 +5,41 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/dollarshaveclub/metahelm/pkg/manifest"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/helm/pkg/manifest"
 	"k8s.io/helm/pkg/proto/hapi/release"
 	"k8s.io/helm/pkg/releaseutil"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 )
 
+// FailedPod models a single failed pod with metadata and logs
 type FailedPod struct {
 	Name, Phase, Message, Reason string
 	Conditions                   []corev1.PodCondition
 	ContainerStatuses            []corev1.ContainerStatus
-	// Logs is a map of container name to raw log (stdout) output
+	// Logs is a map of container name to raw log (stdout/stderr) output
 	Logs map[string][]byte
 }
 
-// ChartError is a chart install/upgrade error due to failing Kubernetes resources
+// ChartError is a chart install/upgrade error due to failing Kubernetes resources. It contains all Deployment, Job or DaemonSet-related pods that appear to
+// be in a failed state, including up to MaxPodLogLines of log data for each.
 type ChartError struct {
-	FailedPods        []FailedPod
-	FailedDaemonSets  map[string][]FailedPod
+	// HelmError is the original error returned by Helm
+	HelmError error
+	// FailedDaemonSets is map of DaemonSet name to failed pods
+	FailedDaemonSets map[string][]FailedPod
+	// FailedDeployments is map of Deployment name to failed pods
 	FailedDeployments map[string][]FailedPod
-	FailedJobs        map[string][]FailedPod
+	// FailedJobs is map of Job name to failed pods
+	FailedJobs map[string][]FailedPod
 }
 
 // NewChartError returns an initialized empty ChartError
-func NewChartError() ChartError {
+func NewChartError(err error) ChartError {
 	return ChartError{
-		FailedPods:        []FailedPod{},
+		HelmError:         err,
 		FailedDaemonSets:  make(map[string][]FailedPod),
 		FailedDeployments: make(map[string][]FailedPod),
 		FailedJobs:        make(map[string][]FailedPod),
@@ -42,7 +48,7 @@ func NewChartError() ChartError {
 
 // Error satisfies the error interface
 func (ce ChartError) Error() string {
-	return fmt.Sprintf("error installing/upgrading chart: failed resources: deployments: %v; jobs: %v; pods: %v; daemonsets: %v", len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedPods), len(ce.FailedDaemonSets))
+	return errors.Wrap(fmt.Errorf("failed resources (deployments: %v; jobs: %v; daemonsets: %v)", len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedDaemonSets)), ce.HelmError.Error()).Error()
 }
 
 // PopulateFromRelease finds the failed Jobs and Pods for a given release and fills ChartError with names and logs of the failed resources
@@ -59,53 +65,48 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 		return errors.New("release is nil")
 	}
 	for _, m := range manifest.SplitManifests(releaseutil.SplitManifests(rls.Manifest)) {
-		ss := []string{}
+		ml := map[string]string{}
 		failedpods := []FailedPod{}
 		switch m.Head.Kind {
 		case "Deployment":
-			d, err := kc.ExtensionsV1beta1().Deployments(rls.Namespace).Get(m.Name, metav1.GetOptions{})
+			d, err := kc.ExtensionsV1beta1().Deployments(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
 			if err != nil || d.Spec.Replicas == nil || d == nil {
 				return errors.Wrap(err, "error getting deployment")
 			}
 			rs, err := deploymentutil.GetNewReplicaSet(d, kc.ExtensionsV1beta1())
 			if err != nil || rs == nil {
-				return errors.Wrap(err, "error replica set")
+				return errors.Wrap(err, "error getting replica set")
 			}
-			for k, v := range d.Spec.Selector.MatchLabels {
-				ss = append(ss, fmt.Sprintf("%v = %v", k, v))
-			}
+			ml = d.Spec.Selector.MatchLabels
 		case "Job":
-			j, err := kc.BatchV1().Jobs(rls.Namespace).Get(m.Name, metav1.GetOptions{})
+			j, err := kc.BatchV1().Jobs(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrap(err, "error getting job")
 			}
-			ss := []string{}
-			for k, v := range j.Spec.Selector.MatchLabels {
-				ss = append(ss, fmt.Sprintf("%v = %v", k, v))
-			}
+			ml = j.Spec.Selector.MatchLabels
 		case "DaemonSet":
-			ds, err := kc.ExtensionsV1beta1().DaemonSets(rls.Namespace).Get(m.Name, metav1.GetOptions{})
+			ds, err := kc.ExtensionsV1beta1().DaemonSets(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrap(err, "error getting daemonset")
 			}
-			ss := []string{}
-			for k, v := range ds.Spec.Selector.MatchLabels {
-				ss = append(ss, fmt.Sprintf("%v = %v", k, v))
-			}
-		case "Pod":
+			ml = ds.Spec.Selector.MatchLabels
 		default:
 			// we don't care about any other resource types
 			continue
 		}
-		if len(ss) == 0 {
+		if len(ml) == 0 {
 			continue
+		}
+		ss := []string{}
+		for k, v := range ml {
+			ss = append(ss, fmt.Sprintf("%v = %v", k, v))
 		}
 		pl, err := kc.CoreV1().Pods(rls.Namespace).List(metav1.ListOptions{LabelSelector: strings.Join(ss, ",")})
 		if err != nil || pl == nil {
 			return errors.Wrapf(err, "error listing pods for selector: %v", ss)
 		}
 		for _, pod := range pl.Items {
-			if pod.Status.Phase != corev1.PodRunning || pod.Status.Phase != corev1.PodSucceeded {
+			if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
 				fp := FailedPod{Logs: make(map[string][]byte)}
 				fp.Name = pod.ObjectMeta.Name
 				fp.Phase = string(pod.Status.Phase)
@@ -117,32 +118,25 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 				for _, cs := range fp.ContainerStatuses {
 					if !cs.Ready && cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0 {
 						plopts.Container = cs.Name
-						req := kc.CoreV1().Pods(rls.Namespace).GetLogs(pod.Name, &plopts)
-						logrc, err := req.Stream()
+						logs, err := getlogs(rls.Namespace, pod.Name, &plopts, kc)
 						if err != nil {
-							return errors.Wrapf(err, "error getting logs for pod: %v", pod.Name)
+							return errors.Wrapf(err, "error getting logs for pod %v", pod.Name)
 						}
-						logs, err := ioutil.ReadAll(logrc)
-						if err != nil {
-							logrc.Close()
-							return errors.Wrapf(err, "error reading logs for pod: %v", pod.Name)
-						}
-						logrc.Close()
 						fp.Logs[cs.Name] = logs
 					}
 				}
 				failedpods = append(failedpods, fp)
 			}
 		}
-		switch m.Head.Kind {
-		case "Deployment":
-			ce.FailedDeployments[m.Name] = failedpods
-		case "Job":
-			ce.FailedJobs[m.Name] = failedpods
-		case "DaemonSet":
-			ce.FailedDaemonSets[m.Name] = failedpods
-		case "Pod":
-			ce.FailedPods = failedpods
+		if len(failedpods) > 0 {
+			switch m.Head.Kind {
+			case "Deployment":
+				ce.FailedDeployments[m.Head.Metadata.Name] = failedpods
+			case "Job":
+				ce.FailedJobs[m.Head.Metadata.Name] = failedpods
+			case "DaemonSet":
+				ce.FailedDaemonSets[m.Head.Metadata.Name] = failedpods
+			}
 		}
 	}
 	return nil
@@ -164,7 +158,7 @@ func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc
 	}
 	rs, err := deploymentutil.GetNewReplicaSet(d, kc.ExtensionsV1beta1())
 	if err != nil || rs == nil {
-		return errors.Wrap(err, "error replica set")
+		return errors.Wrap(err, "error getting replica set")
 	}
 	ss := []string{}
 	for k, v := range d.Spec.Selector.MatchLabels {
@@ -176,7 +170,7 @@ func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc
 	}
 	failedpods := []FailedPod{}
 	for _, pod := range pl.Items {
-		if pod.Status.Phase != corev1.PodRunning || pod.Status.Phase != corev1.PodSucceeded {
+		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
 			fp := FailedPod{Logs: make(map[string][]byte)}
 			fp.Name = pod.ObjectMeta.Name
 			fp.Phase = string(pod.Status.Phase)
@@ -188,17 +182,10 @@ func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc
 			for _, cs := range fp.ContainerStatuses {
 				if !cs.Ready && cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0 {
 					plopts.Container = cs.Name
-					req := kc.CoreV1().Pods(namespace).GetLogs(pod.Name, &plopts)
-					logrc, err := req.Stream()
+					logs, err := getlogs(namespace, pod.Name, &plopts, kc)
 					if err != nil {
-						return errors.Wrapf(err, "error getting logs for pod: %v", pod.Name)
+						return errors.Wrapf(err, "error getting logs for pod %v", pod.Name)
 					}
-					logs, err := ioutil.ReadAll(logrc)
-					if err != nil {
-						logrc.Close()
-						return errors.Wrapf(err, "error reading logs for pod: %v", pod.Name)
-					}
-					logrc.Close()
 					fp.Logs[cs.Name] = logs
 				}
 			}
@@ -207,4 +194,18 @@ func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc
 	}
 	ce.FailedDeployments[deploymentName] = failedpods
 	return nil
+}
+
+func getlogs(namespace, podname string, plopts *corev1.PodLogOptions, kc K8sClient) ([]byte, error) {
+	req := kc.CoreV1().Pods(namespace).GetLogs(podname, plopts)
+	logrc, err := req.Stream()
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting logs")
+	}
+	defer logrc.Close()
+	logs, err := ioutil.ReadAll(logrc)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading logs")
+	}
+	return logs, nil
 }

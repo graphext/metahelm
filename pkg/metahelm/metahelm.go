@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	"k8s.io/helm/pkg/helm"
+	"k8s.io/helm/pkg/proto/hapi/release"
 	rls "k8s.io/helm/pkg/proto/hapi/services"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 )
@@ -114,12 +115,16 @@ const DefaultK8sNamespace = "default"
 
 var retryDelay = 10 * time.Second
 
-// Install installs charts in order according to dependencies and returns the names of the releases, or error
+// Install installs charts in order according to dependencies and returns the names of the releases, or error.
+// In the event of an error, the client can type assert that the error returned is of type ChartError, which then provides information on precisely which
+// kubernetes objects caused failure, if that can be determined.
 func (m *Manager) Install(ctx context.Context, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
 	return m.installOrUpgrade(ctx, nil, false, charts, opts...)
 }
 
 // Upgrade upgrades charts in order according to dependencies, using the release names in rmap. ValueOverrides will be used in the upgrade.
+// In the event of an error, the client can type assert that the error returned is of type ChartError, which then provides information on precisely which
+// kubernetes objects caused failure, if that can be determined.
 func (m *Manager) Upgrade(ctx context.Context, rmap ReleaseMap, charts []Chart, opts ...InstallOption) error {
 	for _, c := range charts {
 		if _, ok := rmap[c.Title]; !ok {
@@ -233,19 +238,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			m.log("%v: running helm upgrade", obj.Name())
 			resp, err := m.HC.UpdateRelease(relname, c.Location, uops...)
 			if err != nil {
-				ce := NewChartError()
-				if c.WaitUntilHelmSaysItsReady {
-					if err := ce.PopulateFromRelease(resp.Release, m.K8c, MaxPodLogLines); err != nil {
-						m.log("error populating chart error from release: %v", err)
-						return errors.Wrap(err, "error upgrading release")
-					}
-					return ce
-				}
-				if err := ce.PopulateFromDeployment(ops.k8sNamespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err != nil {
-					m.log("error populating chart error from deployment: %v", err)
-					return errors.Wrap(err, "error upgrading release")
-				}
-				return ce
+				return m.charterror(err, ops.k8sNamespace, c, resp.Release, "upgrading")
 			}
 		} else {
 			opstr = "installation"
@@ -256,19 +249,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
 				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
-				ce := NewChartError()
-				if c.WaitUntilHelmSaysItsReady {
-					if err := ce.PopulateFromRelease(resp.Release, m.K8c, MaxPodLogLines); err != nil {
-						m.log("error populating chart error from release: %v", err)
-						return errors.Wrap(err, "error installing chart")
-					}
-					return ce
-				}
-				if err := ce.PopulateFromDeployment(ops.k8sNamespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err != nil {
-					m.log("error populating chart error from deployment: %v", err)
-					return errors.Wrap(err, "error installing chart")
-				}
-				return ce
+				return m.charterror(err, ops.k8sNamespace, c, resp.Release, "installing")
 			}
 			rn.Lock()
 			rn.rmap[c.Title] = resp.Release.Name
@@ -281,6 +262,24 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 		return nil, errors.Wrap(err, "error running installs")
 	}
 	return rn.rmap, nil
+}
+
+func (m *Manager) charterror(err error, namespace string, c *Chart, rls *release.Release, operation string) error {
+	ce := NewChartError(err)
+	if c.WaitUntilHelmSaysItsReady {
+		if rls != nil {
+			if err := ce.PopulateFromRelease(rls, m.K8c, MaxPodLogLines); err != nil {
+				m.log("error populating chart error from release: %v", err)
+				return errors.Wrap(err, "error "+operation+" chart")
+			}
+		}
+		return ce
+	}
+	if err := ce.PopulateFromDeployment(namespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err != nil {
+		m.log("error populating chart error from deployment: %v", err)
+		return errors.Wrap(err, "error "+operation+" chart")
+	}
+	return ce
 }
 
 // ChartWaitPollInterval is the amount of time spent between polling attempts when checking if a deployment is healthy
