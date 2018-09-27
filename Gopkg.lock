@@ -37,6 +37,14 @@
   version = "v1.4.2"
 
 [[projects]]
+  digest = "1:b0baf96eb3f1387dfd368f38f1d9c91adb947239530014d1006540ccee7579b2"
+  name = "github.com/Masterminds/sprig"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "15f9564e7e9cf0da02a48e0d25f12a7b83559aa6"
+  version = "v2.16.0"
+
+[[projects]]
   digest = "1:d1665c44bd5db19aaee18d1b6233c99b0b9a986e8bccb24ef54747547a48027f"
   name = "github.com/PuerkitoBio/purell"
   packages = ["."]
@@ -59,6 +67,14 @@
   pruneopts = "UT"
   revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
   version = "v1.0.5"
+
+[[projects]]
+  digest = "1:8f5416c7f59da8600725ae1ff00a99af1da8b04c211ae6f3c8f8bcab0164f650"
+  name = "github.com/aokoli/goutils"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3391d3790d23d03408670993e957e8f408993c34"
+  version = "v1.0.1"
 
 [[projects]]
   branch = "master"
@@ -274,6 +290,14 @@
   revision = "24818f796faf91cd76ec7bddd72458fbced7a6c1"
 
 [[projects]]
+  digest = "1:3a26588bc48b96825977c1b3df964f8fd842cd6860cc26370588d3563433cf11"
+  name = "github.com/google/uuid"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "d460ce9f8df2e77fb1ba55ca87fafed96c607494"
+  version = "1.0.0"
+
+[[projects]]
   digest = "1:5e031a35b76ee001fa9ca9d598298054a123d080e00d13a8dafcfc5e3ecd5b58"
   name = "github.com/googleapis/gnostic"
   packages = [
@@ -297,6 +321,14 @@
   revision = "9cad4c3443a7200dd6400aef47183728de563a38"
 
 [[projects]]
+  digest = "1:9b7a07ac7577787a8ecc1334cb9f34df1c76ed82a917d556c5713d3ab84fbc43"
+  name = "github.com/grpc-ecosystem/go-grpc-prometheus"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c225b8c3b01faf2899099b768856a9e916e5087b"
+  version = "v1.2.0"
+
+[[projects]]
   branch = "master"
   digest = "1:cf296baa185baae04a9a7004efee8511d08e2f5f51d4cbe5375da89722d681db"
   name = "github.com/hashicorp/golang-lru"
@@ -314,6 +346,14 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "bf9dde6d0d2c004a008c27aaee91170c786f6db8"
+
+[[projects]]
+  digest = "1:f9a5e090336881be43cfc1cf468330c1bdd60abdc9dd194e0b1ab69f4b94dd7c"
+  name = "github.com/huandu/xstrings"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "f02667b379e2fb5916c3cda2cf31e0eb885d79f8"
+  version = "v1.2.0"
 
 [[projects]]
   digest = "1:b39dba8363bf11da3cddcc31c5a9c39f17fba8a5317ae0836ea4530bae3b4866"
@@ -489,12 +529,22 @@
   version = "v1.0.1"
 
 [[projects]]
+  digest = "1:9deeaaf623bd5bff1aff7317417ffcd960557afa3b1a1dc27ca800a416a4b6a3"
+  name = "github.com/technosophos/moniker"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a5dbd03a2245d554160e3ae6bfdcf969fe58b431"
+  version = "0.2.0"
+
+[[projects]]
   branch = "master"
-  digest = "1:0faa1e97cfa78445bc4d20d70b40929e88040c8f3110eb497f965d41bb6e593a"
+  digest = "1:cd44c46105ba9caa27aa4547c037b084666b57fa9ae3c6a7d3a813522a59b70b"
   name = "golang.org/x/crypto"
   packages = [
     "ed25519",
     "ed25519/internal/edwards25519",
+    "pbkdf2",
+    "scrypt",
     "ssh/terminal",
   ]
   pruneopts = "UT"
@@ -993,20 +1043,31 @@
   version = "v7.0.0"
 
 [[projects]]
-  digest = "1:4fa7e6787cd48987461f24d51ff9e6c709ae14877b0a2c6cc7780ecdcbd1e5a4"
+  digest = "1:e73ede50adc18d5270a8da9739dcce60631eb689e9f2b38ed47b8743ae0d39d2"
   name = "k8s.io/helm"
   packages = [
     "pkg/chartutil",
+    "pkg/engine",
     "pkg/helm",
     "pkg/helm/portforwarder",
+    "pkg/hooks",
     "pkg/ignore",
     "pkg/kube",
     "pkg/proto/hapi/chart",
     "pkg/proto/hapi/release",
+    "pkg/proto/hapi/rudder",
     "pkg/proto/hapi/services",
     "pkg/proto/hapi/version",
+    "pkg/releasetesting",
+    "pkg/releaseutil",
+    "pkg/rudder",
+    "pkg/storage",
+    "pkg/storage/driver",
     "pkg/strvals",
     "pkg/sympath",
+    "pkg/tiller",
+    "pkg/tiller/environment",
+    "pkg/timeconv",
     "pkg/version",
   ]
   pruneopts = "UT"
@@ -1224,6 +1285,8 @@
     "gonum.org/v1/gonum/graph/simple",
     "gonum.org/v1/gonum/graph/topo",
     "gopkg.in/yaml.v2",
+    "k8s.io/api/batch/v1",
+    "k8s.io/api/core/v1",
     "k8s.io/api/extensions/v1beta1",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/runtime",
@@ -1231,6 +1294,8 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
+    "k8s.io/client-go/kubernetes/typed/batch/v1",
+    "k8s.io/client-go/kubernetes/typed/core/v1",
     "k8s.io/client-go/kubernetes/typed/extensions/v1beta1",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/clientcmd",
@@ -1239,7 +1304,9 @@
     "k8s.io/helm/pkg/kube",
     "k8s.io/helm/pkg/proto/hapi/release",
     "k8s.io/helm/pkg/proto/hapi/services",
+    "k8s.io/helm/pkg/releaseutil",
     "k8s.io/helm/pkg/strvals",
+    "k8s.io/helm/pkg/tiller",
     "k8s.io/kubernetes/pkg/controller/deployment/util",
   ]
   solver-name = "gps-cdcl"
