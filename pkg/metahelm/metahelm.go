@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	"k8s.io/helm/pkg/helm"
-	"k8s.io/helm/pkg/proto/hapi/release"
 	rls "k8s.io/helm/pkg/proto/hapi/services"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 )
@@ -33,6 +32,7 @@ type HelmClient interface {
 	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
 	UpdateRelease(rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
 	ListReleases(opts ...helm.ReleaseListOption) (*rls.ListReleasesResponse, error)
+	ReleaseContent(rlsName string, opts ...helm.ContentOption) (*rls.GetReleaseContentResponse, error)
 }
 
 // LogFunc is a function that logs a formatted string somewhere
@@ -245,9 +245,9 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				uops = append(uops, helm.UpdateValueOverrides(c.ValueOverrides))
 			}
 			m.log("%v: running helm upgrade", obj.Name())
-			resp, err := m.HC.UpdateRelease(relname, c.Location, uops...)
+			_, err = m.HC.UpdateRelease(relname, c.Location, uops...)
 			if err != nil {
-				return m.charterror(err, ops.k8sNamespace, c, resp.Release, "upgrading")
+				return m.charterror(err, ops, c, "upgrading")
 			}
 		} else {
 			opstr = "installation"
@@ -258,7 +258,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
 				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
 			if err != nil {
-				return m.charterror(err, ops.k8sNamespace, c, resp.Release, "installing")
+				return m.charterror(err, ops, c, "installing")
 			}
 			rn.Lock()
 			rn.rmap[c.Title] = resp.Release.Name
@@ -268,23 +268,36 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 		return m.waitForChart(ctx, c, ops.k8sNamespace)
 	}
 	if err := og.Walk(ctx, af); err != nil {
-		return nil, errors.Wrap(err, "error running installs")
+		werr, ok := err.(dag.WalkError)
+		if !ok {
+			// shouldn't be possible
+			return nil, errors.Wrap(err, "dag walk error (not a WalkError)")
+		}
+		err2 := errors.Cause(werr.Err)
+		if ce, ok := err2.(ChartError); ok {
+			ce.Level = werr.Level
+			return nil, ce
+		}
+		return nil, err
 	}
 	return rn.rmap, nil
 }
 
-func (m *Manager) charterror(err error, namespace string, c *Chart, rls *release.Release, operation string) error {
+func (m *Manager) charterror(err error, ops *options, c *Chart, operation string) error {
 	ce := NewChartError(err)
 	if c.WaitUntilHelmSaysItsReady {
-		if rls != nil {
-			if err2 := ce.PopulateFromRelease(rls, m.K8c, MaxPodLogLines); err2 != nil {
-				m.log("error populating chart error from release: %v", err2)
-				return errors.Wrap(err, "error "+operation+" chart")
-			}
+		rc, err2 := m.HC.ReleaseContent(ReleaseName(ops.releaseNamePrefix + c.Title))
+		if err2 != nil || rc == nil || rc.Release == nil {
+			m.log("error fetching helm release: %v", err2)
+			return ce
+		}
+		if err2 := ce.PopulateFromRelease(rc.Release, m.K8c, MaxPodLogLines); err2 != nil {
+			m.log("error populating chart error from release: %v", err2)
+			return errors.Wrap(err, "error "+operation+" chart")
 		}
 		return ce
 	}
-	if err2 := ce.PopulateFromDeployment(namespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err2 != nil {
+	if err2 := ce.PopulateFromDeployment(ops.k8sNamespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err2 != nil {
 		m.log("error populating chart error from deployment: %v", err2)
 		return errors.Wrap(err, "error "+operation+" chart")
 	}

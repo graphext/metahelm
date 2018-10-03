@@ -209,14 +209,30 @@ func (og *ObjectGraph) Dot(name string) ([]byte, error) {
 // ActionFunc is a function that is executed for each node in the graph. Returning an error will cause the graph walk to abort.
 type ActionFunc func(GraphObject) error
 
+// WalkError defines an error that occurs during a graph Walk()
+type WalkError struct {
+	// Level is the level of the graph (zero-indexed) where the error occurred
+	Level uint
+	// Err is the original error
+	Err error
+}
+
+// Error satisfies the error interface
+func (we WalkError) Error() string {
+	return fmt.Sprintf("error executing level %v: %v", we.Level, we.Err)
+}
+
 // Walk traverses the graph levels in decending order, executing af for every node in a given level concurrently
 func (og *ObjectGraph) Walk(ctx context.Context, af ActionFunc) error {
 	var g errgroup.Group
+	var werr WalkError
 	for i := len(og.levels) - 1; i >= 0; i-- {
+		werr.Level = uint(i)
 		for j := range og.levels[i] {
 			select {
 			case <-ctx.Done():
-				return errors.New("context was cancelled")
+				werr.Err = errors.New("context was cancelled")
+				return werr
 			default:
 			}
 			obj := og.levels[i][j]
@@ -226,7 +242,8 @@ func (og *ObjectGraph) Walk(ctx context.Context, af ActionFunc) error {
 			g.Go(func() error { return af(obj) })
 		}
 		if err := g.Wait(); err != nil {
-			return errors.Wrapf(err, "error executing level %v", i)
+			werr.Err = err
+			return werr
 		}
 	}
 	return nil

@@ -28,6 +28,8 @@ type FailedPod struct {
 type ChartError struct {
 	// HelmError is the original error returned by Helm
 	HelmError error
+	// Level is the chart level (zero-indexed) at which the error occurred
+	Level uint
 	// FailedDaemonSets is map of DaemonSet name to failed pods
 	FailedDaemonSets map[string][]FailedPod
 	// FailedDeployments is map of Deployment name to failed pods
@@ -48,7 +50,7 @@ func NewChartError(err error) ChartError {
 
 // Error satisfies the error interface
 func (ce ChartError) Error() string {
-	return errors.Wrap(fmt.Errorf("failed resources (deployments: %v; jobs: %v; daemonsets: %v)", len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedDaemonSets)), ce.HelmError.Error()).Error()
+	return errors.Wrap(fmt.Errorf("error executing level %v: failed resources (deployments: %v; jobs: %v; daemonsets: %v)", ce.Level, len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedDaemonSets)), ce.HelmError.Error()).Error()
 }
 
 // PopulateFromRelease finds the failed Jobs and Pods for a given release and fills ChartError with names and logs of the failed resources

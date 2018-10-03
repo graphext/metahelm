@@ -37,6 +37,8 @@ type ChartDefinition struct {
 	Timeout string `yaml:"timeout"`
 	// Wait for all pods of PrimaryDeployment to be healthy? If false, it will only wait for the first pod to become healthy
 	WaitForAllPods bool `yaml:"wait_for_all_pods"`
+	// Wait until Helm thinks the chart is ready (equivalent to the helm install --wait CLI flag). Overrides PrimaryDeployment.
+	WaitForHelm bool `yaml:"wait_for_helm"`
 	// The list of dependencies this chart has (names must be present in the same file)
 	Dependencies []string `yaml:"dependencies"`
 }
@@ -158,17 +160,22 @@ func chartDefToChart(cd ChartDefinition) (metahelm.Chart, error) {
 		} else {
 			dhi = metahelm.AtLeastOnePodHealthy
 		}
-		if cd.Timeout != "" {
-			wt, err = time.ParseDuration(cd.Timeout)
-			if err != nil {
-				return metahelm.Chart{}, errors.Wrap(err, "error parsing timeout")
-			}
+	}
+	if cd.Timeout != "" {
+		wt, err = time.ParseDuration(cd.Timeout)
+		if err != nil {
+			return metahelm.Chart{}, errors.Wrap(err, "error parsing timeout")
 		}
+	}
+	if cd.WaitForHelm {
+		cd.PrimaryDeployment = ""
+		dhi = metahelm.IgnorePodHealth
 	}
 	return metahelm.Chart{
 		Title:                      cd.Name,
 		Location:                   cd.Path,
 		ValueOverrides:             b,
+		WaitUntilHelmSaysItsReady:  cd.WaitForHelm,
 		WaitUntilDeployment:        cd.PrimaryDeployment,
 		WaitTimeout:                wt,
 		DeploymentHealthIndication: dhi,
@@ -301,11 +308,19 @@ func displayChartError(ce metahelm.ChartError) {
 			fmt.Printf("\tMessage: %v\n", fp.Message)
 			fmt.Printf("\tConditions: %+v\n", fp.Conditions)
 			fmt.Printf("\tContainer Statuses: %+v\n", fp.ContainerStatuses)
-			fmt.Printf("\tContainer Logs:\n")
+			fmt.Printf("\tContainer Logs:")
+			if len(fp.Logs) == 0 {
+				fmt.Printf(" <none>")
+			}
+			fmt.Printf("\n")
 			for name, logs := range fp.Logs {
 				fmt.Printf("\tContainer: %v\n", name)
 				fmt.Printf("\tLogs:\n")
-				os.Stdout.Write(logs)
+				if len(logs) > 0 {
+					os.Stdout.Write(logs)
+				} else {
+					fmt.Printf("<empty>\n")
+				}
 				fmt.Printf("\n\n")
 			}
 		}
