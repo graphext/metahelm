@@ -314,10 +314,12 @@ func displayChartError(ce metahelm.ChartError) {
 			}
 			fmt.Printf("\n")
 			for name, logs := range fp.Logs {
-				fmt.Printf("\tContainer: %v\n", name)
-				fmt.Printf("\tLogs:\n")
+				fmt.Printf("\t\tContainer: %v\n", name)
+				fmt.Printf("\t\tLogs:\n")
 				if len(logs) > 0 {
+					fmt.Printf("\n====LOG START====\n")
 					os.Stdout.Write(logs)
+					fmt.Printf("\n====LOG END====\n")
 				} else {
 					fmt.Printf("<empty>\n")
 				}
