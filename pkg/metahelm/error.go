@@ -55,14 +55,6 @@ func (ce ChartError) Error() string {
 
 // PopulateFromRelease finds the failed Jobs and Pods for a given release and fills ChartError with names and logs of the failed resources
 func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, maxloglines uint) error {
-	var maxlines *int64
-	if maxloglines > 0 {
-		ml := int64(maxloglines)
-		maxlines = &ml
-	}
-	plopts := corev1.PodLogOptions{
-		TailLines: maxlines,
-	}
 	if rls == nil {
 		return errors.New("release is nil")
 	}
@@ -108,25 +100,7 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 			return errors.Wrapf(err, "error listing pods for selector: %v", ss)
 		}
 		for _, pod := range pl.Items {
-			if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
-				fp := FailedPod{Logs: make(map[string][]byte)}
-				fp.Name = pod.ObjectMeta.Name
-				fp.Phase = string(pod.Status.Phase)
-				fp.Message = pod.Status.Message
-				fp.Reason = pod.Status.Reason
-				fp.Conditions = pod.Status.Conditions
-				fp.ContainerStatuses = pod.Status.ContainerStatuses
-				// get logs
-				for _, cs := range fp.ContainerStatuses {
-					if !cs.Ready && cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0 {
-						plopts.Container = cs.Name
-						logs, err := getlogs(rls.Namespace, pod.Name, &plopts, kc)
-						if err != nil {
-							return errors.Wrapf(err, "error getting logs for pod %v", pod.Name)
-						}
-						fp.Logs[cs.Name] = logs
-					}
-				}
+			if failed, fp := failedpod(pod, maxloglines, kc); failed {
 				failedpods = append(failedpods, fp)
 			}
 		}
@@ -146,14 +120,6 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 
 // PopulateFromDeployment finds the failed pods for a deployment and fills ChartError with names and logs of the failed pods
 func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc K8sClient, maxloglines uint) error {
-	var maxlines *int64
-	if maxloglines > 0 {
-		ml := int64(maxloglines)
-		maxlines = &ml
-	}
-	plopts := corev1.PodLogOptions{
-		TailLines: maxlines,
-	}
 	d, err := kc.ExtensionsV1beta1().Deployments(namespace).Get(deploymentName, metav1.GetOptions{})
 	if err != nil || d.Spec.Replicas == nil || d == nil {
 		return errors.Wrap(err, "error getting deployment")
@@ -172,30 +138,56 @@ func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc
 	}
 	failedpods := []FailedPod{}
 	for _, pod := range pl.Items {
-		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
-			fp := FailedPod{Logs: make(map[string][]byte)}
-			fp.Name = pod.ObjectMeta.Name
-			fp.Phase = string(pod.Status.Phase)
-			fp.Message = pod.Status.Message
-			fp.Reason = pod.Status.Reason
-			fp.Conditions = pod.Status.Conditions
-			fp.ContainerStatuses = pod.Status.ContainerStatuses
-			// get logs
-			for _, cs := range fp.ContainerStatuses {
-				if !cs.Ready && cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0 {
-					plopts.Container = cs.Name
-					logs, err := getlogs(namespace, pod.Name, &plopts, kc)
-					if err != nil {
-						return errors.Wrapf(err, "error getting logs for pod %v", pod.Name)
-					}
-					fp.Logs[cs.Name] = logs
-				}
-			}
+		if failed, fp := failedpod(pod, maxloglines, kc); failed {
 			failedpods = append(failedpods, fp)
 		}
 	}
 	ce.FailedDeployments[deploymentName] = failedpods
 	return nil
+}
+
+func failedpod(pod corev1.Pod, maxloglines uint, kc K8sClient) (bool, FailedPod) {
+	var maxlines *int64
+	if maxloglines > 0 {
+		ml := int64(maxloglines)
+		maxlines = &ml
+	}
+	plopts := corev1.PodLogOptions{
+		TailLines: maxlines,
+	}
+	var scheduled, ready, succeeded bool
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodScheduled {
+			scheduled = c.Status == corev1.ConditionTrue
+		}
+		if c.Type == corev1.PodReady {
+			ready = c.Status == corev1.ConditionTrue
+		}
+	}
+	succeeded = pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodSucceeded
+	if !succeeded || (scheduled && !ready) {
+		fp := FailedPod{Logs: make(map[string][]byte)}
+		fp.Name = pod.ObjectMeta.Name
+		fp.Phase = string(pod.Status.Phase)
+		fp.Message = pod.Status.Message
+		fp.Reason = pod.Status.Reason
+		fp.Conditions = pod.Status.Conditions
+		fp.ContainerStatuses = pod.Status.ContainerStatuses
+		// get logs
+		for _, cs := range fp.ContainerStatuses {
+			if !cs.Ready && ((cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0) ||
+				(cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0)) {
+				plopts.Container = cs.Name
+				logs, err := getlogs(pod.Namespace, pod.Name, &plopts, kc)
+				if err != nil {
+					logs = []byte("error gettings logs for pod: " + err.Error())
+				}
+				fp.Logs[cs.Name] = logs
+			}
+		}
+		return true, fp
+	}
+	return false, FailedPod{}
 }
 
 func getlogs(namespace, podname string, plopts *corev1.PodLogOptions, kc K8sClient) ([]byte, error) {
