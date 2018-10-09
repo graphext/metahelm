@@ -155,7 +155,7 @@ func failedpod(pod corev1.Pod, maxloglines uint, kc K8sClient) (bool, FailedPod)
 	plopts := corev1.PodLogOptions{
 		TailLines: maxlines,
 	}
-	var scheduled, ready, succeeded bool
+	var scheduled, ready, running bool
 	for _, c := range pod.Status.Conditions {
 		if c.Type == corev1.PodScheduled {
 			scheduled = c.Status == corev1.ConditionTrue
@@ -164,8 +164,11 @@ func failedpod(pod corev1.Pod, maxloglines uint, kc K8sClient) (bool, FailedPod)
 			ready = c.Status == corev1.ConditionTrue
 		}
 	}
-	succeeded = pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodSucceeded
-	if !succeeded || (scheduled && !ready) {
+	if pod.Status.Phase == corev1.PodSucceeded {
+		return false, FailedPod{}
+	}
+	running = pod.Status.Phase == corev1.PodRunning
+	if !running || (scheduled && !ready) {
 		fp := FailedPod{Logs: make(map[string][]byte)}
 		fp.Name = pod.ObjectMeta.Name
 		fp.Phase = string(pod.Status.Phase)
@@ -192,6 +195,10 @@ func failedpod(pod corev1.Pod, maxloglines uint, kc K8sClient) (bool, FailedPod)
 
 func getlogs(namespace, podname string, plopts *corev1.PodLogOptions, kc K8sClient) ([]byte, error) {
 	req := kc.CoreV1().Pods(namespace).GetLogs(podname, plopts)
+	if req == nil {
+		return []byte{}, nil
+	}
+	req.BackOff(nil) // fixes tests with fake client
 	logrc, err := req.Stream()
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting logs")
