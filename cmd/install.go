@@ -37,6 +37,8 @@ type ChartDefinition struct {
 	Timeout string `yaml:"timeout"`
 	// Wait for all pods of PrimaryDeployment to be healthy? If false, it will only wait for the first pod to become healthy
 	WaitForAllPods bool `yaml:"wait_for_all_pods"`
+	// Wait until Helm thinks the chart is ready (equivalent to the helm install --wait CLI flag). Overrides PrimaryDeployment.
+	WaitForHelm bool `yaml:"wait_for_helm"`
 	// The list of dependencies this chart has (names must be present in the same file)
 	Dependencies []string `yaml:"dependencies"`
 }
@@ -126,7 +128,7 @@ func readAndValidateFile(f string, validate bool) ([]ChartDefinition, error) {
 
 // expandChartFilesPath expands relative file path for charts and values
 func expandChartFilesPath(charts []ChartDefinition, baseDir string) {
-	for i, _ := range charts {
+	for i := range charts {
 		c := &charts[i]
 		c.ValuesPath = expandFilePath(c.ValuesPath, baseDir)
 		c.Path = expandFilePath(c.Path, baseDir)
@@ -158,17 +160,22 @@ func chartDefToChart(cd ChartDefinition) (metahelm.Chart, error) {
 		} else {
 			dhi = metahelm.AtLeastOnePodHealthy
 		}
-		if cd.Timeout != "" {
-			wt, err = time.ParseDuration(cd.Timeout)
-			if err != nil {
-				return metahelm.Chart{}, errors.Wrap(err, "error parsing timeout")
-			}
+	}
+	if cd.Timeout != "" {
+		wt, err = time.ParseDuration(cd.Timeout)
+		if err != nil {
+			return metahelm.Chart{}, errors.Wrap(err, "error parsing timeout")
 		}
+	}
+	if cd.WaitForHelm {
+		cd.PrimaryDeployment = ""
+		dhi = metahelm.IgnorePodHealth
 	}
 	return metahelm.Chart{
 		Title:                      cd.Name,
 		Location:                   cd.Path,
 		ValueOverrides:             b,
+		WaitUntilHelmSaysItsReady:  cd.WaitForHelm,
 		WaitUntilDeployment:        cd.PrimaryDeployment,
 		WaitTimeout:                wt,
 		DeploymentHealthIndication: dhi,
@@ -258,6 +265,9 @@ func install(cmd *cobra.Command, args []string) {
 	}
 
 	if err != nil {
+		if ce, ok := err.(metahelm.ChartError); ok {
+			displayChartError(ce)
+		}
 		fmt.Fprintf(os.Stderr, "error running installations: %v\n", err)
 		return
 	}
@@ -286,4 +296,53 @@ func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
 		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
 	}
 	return options
+}
+
+func displayChartError(ce metahelm.ChartError) {
+	printFailedPods := func(t, k string, v []metahelm.FailedPod) {
+		fmt.Printf("%v: %v\n", t, k)
+		for _, fp := range v {
+			fmt.Printf("\tPod: %v\n", fp.Name)
+			fmt.Printf("\tPhase: %v\n", fp.Phase)
+			fmt.Printf("\tReason: %v\n", fp.Reason)
+			fmt.Printf("\tMessage: %v\n", fp.Message)
+			fmt.Printf("\tConditions: %+v\n", fp.Conditions)
+			fmt.Printf("\tContainer Statuses: %+v\n", fp.ContainerStatuses)
+			fmt.Printf("\tContainer Logs:")
+			if len(fp.Logs) == 0 {
+				fmt.Printf(" <none>")
+			}
+			fmt.Printf("\n")
+			for name, logs := range fp.Logs {
+				fmt.Printf("\t\tContainer: %v\n", name)
+				fmt.Printf("\t\tLogs:\n")
+				if len(logs) > 0 {
+					fmt.Printf("\n====LOG START====\n")
+					os.Stdout.Write(logs)
+					fmt.Printf("\n====LOG END====\n")
+				} else {
+					fmt.Printf("<empty>\n")
+				}
+				fmt.Printf("\n\n")
+			}
+		}
+	}
+	if len(ce.FailedDeployments) > 0 {
+		fmt.Printf("FAILED DEPLOYMENTS:\n===================\n")
+		for k, v := range ce.FailedDeployments {
+			printFailedPods("Deployment", k, v)
+		}
+	}
+	if len(ce.FailedJobs) > 0 {
+		fmt.Printf("FAILED JOBS:\n===================\n")
+		for k, v := range ce.FailedJobs {
+			printFailedPods("Job", k, v)
+		}
+	}
+	if len(ce.FailedDaemonSets) > 0 {
+		fmt.Printf("FAILED DAEMONSETS:\n===================\n")
+		for k, v := range ce.FailedDaemonSets {
+			printFailedPods("DaemonSet", k, v)
+		}
+	}
 }
