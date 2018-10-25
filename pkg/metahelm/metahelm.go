@@ -54,6 +54,7 @@ func (m *Manager) log(msg string, args ...interface{}) {
 type options struct {
 	k8sNamespace, tillerNamespace, releaseNamePrefix string
 	installCallback                                  InstallCallback
+	timeout                                          time.Duration
 }
 
 type InstallOption func(*options)
@@ -76,6 +77,13 @@ func WithTillerNamespace(tns string) InstallOption {
 func WithReleaseNamePrefix(pfx string) InstallOption {
 	return func(op *options) {
 		op.releaseNamePrefix = pfx
+	}
+}
+
+// WithTimeout sets a timeout for all chart installations/upgrades to complete. If the timeout is reached, chart operations are aborted and an error is returned.
+func WithTimeout(timeout time.Duration) InstallOption {
+	return func(op *options) {
+		op.timeout = timeout
 	}
 }
 
@@ -191,6 +199,11 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 		return nil, errors.Wrap(err, "error building graph")
 	}
 	rn := lockingReleases{rmap: make(map[string]string)}
+	started := time.Now().UTC()
+	var deadline time.Time
+	if ops.timeout > 0 {
+		deadline = started.Add(ops.timeout)
+	}
 	af := func(obj dag.GraphObject) error {
 		m.log("%v: starting install", obj.Name())
 	Loop:
@@ -212,6 +225,9 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				return errors.New("callback requested abort")
 			default:
 				return fmt.Errorf("unknown callback result: %v", v)
+			}
+			if deadline.After(started) && time.Now().UTC().After(deadline) {
+				return fmt.Errorf("timeout exceeded: %v", ops.timeout)
 			}
 		}
 		c := cmap[obj.Name()]
