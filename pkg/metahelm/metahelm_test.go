@@ -3,6 +3,7 @@ package metahelm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -146,6 +147,31 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 	if i != 1 {
 		t.Fatalf("bad callback count: %v", i)
 	}
+}
+
+func TestGraphInstallTimeout(t *testing.T) {
+	fkc := fake.NewSimpleClientset(gentestobjs()...)
+	fhc := &helm.FakeClient{}
+	m := Manager{
+		K8c: fkc,
+		HC:  fhc,
+	}
+	ChartWaitPollInterval = 1 * time.Second
+	cb := func(c Chart) InstallCallbackAction {
+		if c.Name() != testCharts[1].Name() {
+			return Continue
+		}
+		return Wait
+	}
+	retryDelay = 10 * time.Millisecond
+	_, err := m.Install(context.Background(), testCharts, WithInstallCallback(cb), WithTimeout(100*time.Millisecond))
+	if err == nil {
+		t.Fatalf("should have returned an error")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("error: %v", err)
 }
 
 func TestValidateCharts(t *testing.T) {
