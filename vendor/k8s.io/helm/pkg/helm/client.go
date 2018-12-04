@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright The Helm Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ func (h *Client) ListReleases(opts ...ReleaseListOption) (*rls.ListReleasesRespo
 		opt(&reqOpts)
 	}
 	req := &reqOpts.listReq
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -85,8 +85,29 @@ func (h *Client) InstallRelease(chstr, ns string, opts ...InstallOption) (*rls.I
 	return h.InstallReleaseFromChart(chart, ns, opts...)
 }
 
+// InstallReleaseWithContext loads a chart from chstr, installs it, and returns the release response while accepting a context.
+func (h *Client) InstallReleaseWithContext(ctx context.Context, chstr, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
+	// load the chart to install
+	chart, err := chartutil.Load(chstr)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.installReleaseFromChartWithContext(ctx, chart, ns, opts...)
+}
+
 // InstallReleaseFromChart installs a new chart and returns the release response.
 func (h *Client) InstallReleaseFromChart(chart *chart.Chart, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
+	return h.installReleaseFromChartWithContext(context.Background(), chart, ns, opts...)
+}
+
+// InstallReleaseFromChartWithContext installs a new chart and returns the release response while accepting a context.
+func (h *Client) InstallReleaseFromChartWithContext(ctx context.Context, chart *chart.Chart, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
+	return h.installReleaseFromChartWithContext(ctx, chart, ns, opts...)
+}
+
+// InstallReleaseFromChart installs a new chart and returns the release response while accepting a context.
+func (h *Client) installReleaseFromChartWithContext(ctx context.Context, chart *chart.Chart, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
 	// apply the install options
 	reqOpts := h.opts
 	for _, opt := range opts {
@@ -97,8 +118,9 @@ func (h *Client) InstallReleaseFromChart(chart *chart.Chart, ns string, opts ...
 	req.Namespace = ns
 	req.DryRun = reqOpts.dryRun
 	req.DisableHooks = reqOpts.disableHooks
+	req.DisableCrdHook = reqOpts.disableCRDHook
 	req.ReuseName = reqOpts.reuseName
-	ctx := NewContext()
+	ctx = NewContext(ctx)
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -137,7 +159,7 @@ func (h *Client) DeleteRelease(rlsName string, opts ...DeleteOption) (*rls.Unins
 	req := &reqOpts.uninstallReq
 	req.Name = rlsName
 	req.DisableHooks = reqOpts.disableHooks
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -158,8 +180,28 @@ func (h *Client) UpdateRelease(rlsName string, chstr string, opts ...UpdateOptio
 	return h.UpdateReleaseFromChart(rlsName, chart, opts...)
 }
 
+func (h *Client) UpdateReleaseWithContext(ctx context.Context, rlsName string, chstr string, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
+	// load the chart to update
+	chart, err := chartutil.Load(chstr)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.updateReleaseFromChartWithContext(ctx, rlsName, chart, opts...)
+}
+
 // UpdateReleaseFromChart updates a release to a new/different chart.
 func (h *Client) UpdateReleaseFromChart(rlsName string, chart *chart.Chart, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
+	return h.updateReleaseFromChartWithContext(context.Background(), rlsName, chart, opts...)
+}
+
+// UpdateReleaseFromChartWithContext updates a release to a new/different chart while accepting a context.
+func (h *Client) UpdateReleaseFromChartWithContext(ctx context.Context, rlsName string, chart *chart.Chart, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
+	return h.updateReleaseFromChartWithContext(ctx, rlsName, chart, opts...)
+}
+
+// updateReleaseFromChartWithContext updates a release to a new/different chart and accepts a context.
+func (h *Client) updateReleaseFromChartWithContext(ctx context.Context, rlsName string, chart *chart.Chart, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
 	// apply the update options
 	reqOpts := h.opts
 	for _, opt := range opts {
@@ -174,7 +216,7 @@ func (h *Client) UpdateReleaseFromChart(rlsName string, chart *chart.Chart, opts
 	req.Force = reqOpts.force
 	req.ResetValues = reqOpts.resetValues
 	req.ReuseValues = reqOpts.reuseValues
-	ctx := NewContext()
+	ctx = NewContext(ctx)
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -200,7 +242,7 @@ func (h *Client) GetVersion(opts ...VersionOption) (*rls.GetVersionResponse, err
 		opt(&reqOpts)
 	}
 	req := &rls.GetVersionRequest{}
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -222,7 +264,7 @@ func (h *Client) RollbackRelease(rlsName string, opts ...RollbackOption) (*rls.R
 	req.DisableHooks = reqOpts.disableHooks
 	req.DryRun = reqOpts.dryRun
 	req.Name = rlsName
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -240,7 +282,7 @@ func (h *Client) ReleaseStatus(rlsName string, opts ...StatusOption) (*rls.GetRe
 	}
 	req := &reqOpts.statusReq
 	req.Name = rlsName
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -258,7 +300,7 @@ func (h *Client) ReleaseContent(rlsName string, opts ...ContentOption) (*rls.Get
 	}
 	req := &reqOpts.contentReq
 	req.Name = rlsName
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -277,7 +319,7 @@ func (h *Client) ReleaseHistory(rlsName string, opts ...HistoryOption) (*rls.Get
 
 	req := &reqOpts.histReq
 	req.Name = rlsName
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	if reqOpts.before != nil {
 		if err := reqOpts.before(ctx, req); err != nil {
@@ -296,14 +338,14 @@ func (h *Client) RunReleaseTest(rlsName string, opts ...ReleaseTestOption) (<-ch
 
 	req := &reqOpts.testReq
 	req.Name = rlsName
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 
 	return h.test(ctx, req)
 }
 
 // PingTiller pings the Tiller pod and ensure's that it is up and running
 func (h *Client) PingTiller() error {
-	ctx := NewContext()
+	ctx := NewContext(context.Background())
 	return h.ping(ctx)
 }
 
@@ -359,7 +401,7 @@ func (h *Client) list(ctx context.Context, req *rls.ListReleasesRequest) (*rls.L
 			resp = r
 			continue
 		}
-		resp.Releases = append(resp.Releases, r.GetReleases()[0])
+		resp.Releases = append(resp.Releases, r.GetReleases()...)
 	}
 	return resp, nil
 }

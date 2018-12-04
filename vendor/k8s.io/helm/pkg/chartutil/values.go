@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright The Helm Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -92,6 +92,22 @@ func (v Values) Encode(w io.Writer) error {
 	}
 	_, err = w.Write(out)
 	return err
+}
+
+// MergeInto takes the properties in src and merges them into Values. Maps
+// are merged while values and arrays are replaced.
+func (v Values) MergeInto(src Values) {
+	for key, srcVal := range src {
+		destVal, found := v[key]
+
+		if found && istable(srcVal) && istable(destVal) {
+			destMap := destVal.(map[string]interface{})
+			srcMap := srcVal.(map[string]interface{})
+			Values(destMap).MergeInto(Values(srcMap))
+		} else {
+			v[key] = srcVal
+		}
+	}
 }
 
 func tableLookup(v Values, simple string) (Values, error) {
