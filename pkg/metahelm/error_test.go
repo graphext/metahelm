@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	mtypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -17,7 +17,7 @@ func TestErrorPopulateFromRelease(t *testing.T) {
 	rls := &release.Release{
 		Namespace: DefaultK8sNamespace,
 		Manifest: `
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: foo
@@ -37,8 +37,8 @@ metadata:
     release: bar-release
     heritage: Tiller`,
 	}
-	r := &v1beta1.ReplicaSet{}
-	d := &v1beta1.Deployment{}
+	r := &appsv1.ReplicaSet{}
+	d := &appsv1.Deployment{}
 	j := &batchv1.Job{}
 	j.ObjectMeta.Name = "bar"
 	j.Namespace = DefaultK8sNamespace
@@ -136,8 +136,8 @@ metadata:
 }
 
 func TestErrorPopulateFromDeployment(t *testing.T) {
-	r := &v1beta1.ReplicaSet{}
-	d := &v1beta1.Deployment{}
+	r := &appsv1.ReplicaSet{}
+	d := &appsv1.Deployment{}
 	p := &corev1.Pod{}
 	p.ObjectMeta.Name = "foo-1234"
 	p.Namespace = DefaultK8sNamespace
