@@ -984,8 +984,7 @@
   version = "v10.0.0"
 
 [[projects]]
-  branch = "client-accept-contexts"
-  digest = "1:b870ce1a3fc289c09614a8d6ef662febd55a61aa300868efda9bba3c02c74fdc"
+  digest = "1:6f707a68fa4f9d3c77aaed17b548221820dc7d93136f0ab3fedf413f59e0e1c9"
   name = "k8s.io/helm"
   packages = [
     "pkg/chartutil",
@@ -1016,7 +1015,7 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "980ad0a2cbec00494f3ed10e53871cf0d82ca527"
+  revision = "4faabedad35a6e4b1f458e342a52c37221d70d48"
   source = "github.com/bkeroackdsc/helm"
 
 [[projects]]
@@ -1187,18 +1186,18 @@
     "gonum.org/v1/gonum/graph/simple",
     "gonum.org/v1/gonum/graph/topo",
     "gopkg.in/yaml.v2",
+    "k8s.io/api/apps/v1",
     "k8s.io/api/batch/v1",
     "k8s.io/api/core/v1",
-    "k8s.io/api/extensions/v1beta1",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/types",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
+    "k8s.io/client-go/kubernetes/typed/apps/v1",
     "k8s.io/client-go/kubernetes/typed/batch/v1",
     "k8s.io/client-go/kubernetes/typed/core/v1",
-    "k8s.io/client-go/kubernetes/typed/extensions/v1beta1",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/helm/pkg/helm",

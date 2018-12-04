@@ -30,8 +30,8 @@ type K8sClient interface {
 
 // HelmClient describes an object that functions as a Helm client
 type HelmClient interface {
-	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
-	UpdateRelease(rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
+	InstallReleaseWithContext(ctx context.Context, chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
+	UpdateReleaseWithContext(ctx context.Context, rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
 	ListReleases(opts ...helm.ReleaseListOption) (*rls.ListReleasesResponse, error)
 	ReleaseContent(rlsName string, opts ...helm.ContentOption) (*rls.GetReleaseContentResponse, error)
 }
@@ -262,14 +262,14 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				uops = append(uops, helm.UpdateValueOverrides(c.ValueOverrides))
 			}
 			m.log("%v: running helm upgrade", obj.Name())
-			_, err = m.HC.UpdateRelease(relname, c.Location, uops...)
+			_, err = m.HC.UpdateReleaseWithContext(ctx, relname, c.Location, uops...)
 			if err != nil {
 				return m.charterror(err, ops, c, "upgrading")
 			}
 		} else {
 			opstr = "installation"
 			m.log("%v: running helm install", obj.Name())
-			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace,
+			resp, err := m.HC.InstallReleaseWithContext(ctx, c.Location, ops.k8sNamespace,
 				helm.ValueOverrides(c.ValueOverrides),
 				helm.ReleaseName(ReleaseName(ops.releaseNamePrefix+c.Title)),
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
