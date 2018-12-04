@@ -51,7 +51,7 @@
     # version = "=2.9.1"
     source = "github.com/bkeroackdsc/helm"
     #branch = "client-accept-contexts"
-    revision = "4faabedad35a6e4b1f458e342a52c37221d70d48"
+    revision = "a3132313dcf97b46dc3ff9a36234702aaa4ac090"
 
 [[constraint]]
   name = "k8s.io/kubernetes"
