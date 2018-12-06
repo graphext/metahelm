@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"k8s.io/api/extensions/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	mtypes "k8s.io/apimachinery/pkg/types"
@@ -50,10 +50,10 @@ func gentestobjs() []runtime.Object {
 	objs := []runtime.Object{}
 	reps := int32(1)
 	iscontroller := true
-	rsl := v1beta1.ReplicaSetList{Items: []v1beta1.ReplicaSet{}}
+	rsl := appsv1.ReplicaSetList{Items: []appsv1.ReplicaSet{}}
 	for _, c := range testCharts {
-		r := &v1beta1.ReplicaSet{}
-		d := &v1beta1.Deployment{}
+		r := &appsv1.ReplicaSet{}
+		d := &appsv1.Deployment{}
 		d.Spec.Replicas = &reps
 		d.Spec.Template.Labels = map[string]string{"app": c.Name()}
 		d.Spec.Template.Spec.NodeSelector = map[string]string{}

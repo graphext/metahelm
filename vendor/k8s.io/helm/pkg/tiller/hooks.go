@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright The Helm Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/hooks"
+	"k8s.io/helm/pkg/manifest"
 	"k8s.io/helm/pkg/proto/hapi/release"
 	util "k8s.io/helm/pkg/releaseutil"
 )
@@ -42,6 +43,7 @@ var events = map[string]release.Hook_Event{
 	hooks.PostRollback:       release.Hook_POST_ROLLBACK,
 	hooks.ReleaseTestSuccess: release.Hook_RELEASE_TEST_SUCCESS,
 	hooks.ReleaseTestFailure: release.Hook_RELEASE_TEST_FAILURE,
+	hooks.CRDInstall:         release.Hook_CRD_INSTALL,
 }
 
 // deletePolices represents a mapping between the key in the annotation for label deleting policy and its real meaning
@@ -52,11 +54,7 @@ var deletePolices = map[string]release.Hook_DeletePolicy{
 }
 
 // Manifest represents a manifest file, which has a name and some content.
-type Manifest struct {
-	Name    string
-	Content string
-	Head    *util.SimpleHead
-}
+type Manifest = manifest.Manifest
 
 type result struct {
 	hooks   []*release.Hook
@@ -137,10 +135,6 @@ func (file *manifestFile) sort(result *result) error {
 			return e
 		}
 
-		if entry.Version != "" && !file.apis.Has(entry.Version) {
-			return fmt.Errorf("apiVersion %q in %s is not available", entry.Version, file.path)
-		}
-
 		if !hasAnyAnnotation(entry) {
 			result.generic = append(result.generic, Manifest{
 				Name:    file.path,
@@ -180,6 +174,13 @@ func (file *manifestFile) sort(result *result) error {
 				isUnknownHook = true
 				break
 			}
+			if e == release.Hook_CRD_INSTALL {
+				result.generic = append(result.generic, Manifest{
+					Name:    file.path,
+					Content: m,
+					Head:    &entry,
+				})
+			}
 			h.Events = append(h.Events, e)
 		}
 
@@ -199,7 +200,6 @@ func (file *manifestFile) sort(result *result) error {
 			}
 		})
 	}
-
 	return nil
 }
 

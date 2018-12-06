@@ -12,9 +12,9 @@ import (
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	batchv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	"k8s.io/helm/pkg/helm"
 	rls "k8s.io/helm/pkg/proto/hapi/services"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
@@ -22,15 +22,16 @@ import (
 
 // K8sClient describes an object that functions as a Kubernetes client
 type K8sClient interface {
-	ExtensionsV1beta1() v1beta1.ExtensionsV1beta1Interface
+	AppsV1() appsv1.AppsV1Interface
+	// ExtensionsV1beta1() v1beta1.ExtensionsV1beta1Interface
 	CoreV1() corev1.CoreV1Interface
 	BatchV1() batchv1.BatchV1Interface
 }
 
 // HelmClient describes an object that functions as a Helm client
 type HelmClient interface {
-	InstallRelease(chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
-	UpdateRelease(rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
+	InstallReleaseWithContext(ctx context.Context, chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
+	UpdateReleaseWithContext(ctx context.Context, rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
 	ListReleases(opts ...helm.ReleaseListOption) (*rls.ListReleasesResponse, error)
 	ReleaseContent(rlsName string, opts ...helm.ContentOption) (*rls.GetReleaseContentResponse, error)
 }
@@ -261,14 +262,14 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				uops = append(uops, helm.UpdateValueOverrides(c.ValueOverrides))
 			}
 			m.log("%v: running helm upgrade", obj.Name())
-			_, err = m.HC.UpdateRelease(relname, c.Location, uops...)
+			_, err = m.HC.UpdateReleaseWithContext(ctx, relname, c.Location, uops...)
 			if err != nil {
 				return m.charterror(err, ops, c, "upgrading")
 			}
 		} else {
 			opstr = "installation"
 			m.log("%v: running helm install", obj.Name())
-			resp, err := m.HC.InstallRelease(c.Location, ops.k8sNamespace,
+			resp, err := m.HC.InstallReleaseWithContext(ctx, c.Location, ops.k8sNamespace,
 				helm.ValueOverrides(c.ValueOverrides),
 				helm.ReleaseName(ReleaseName(ops.releaseNamePrefix+c.Title)),
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
@@ -334,13 +335,13 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 		return nil
 	}
 	return wait.Poll(ChartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
-		d, err := m.K8c.ExtensionsV1beta1().Deployments(ns).Get(c.WaitUntilDeployment, metav1.GetOptions{})
+		d, err := m.K8c.AppsV1().Deployments(ns).Get(c.WaitUntilDeployment, metav1.GetOptions{})
 		if err != nil || d.Spec.Replicas == nil {
 			m.log("%v: error getting deployment (retrying): %v", c.Name(), err)
 			return false, nil // the deployment may not initially exist immediately after installing chart
 		}
 
-		rs, err := deploymentutil.GetNewReplicaSet(d, m.K8c.ExtensionsV1beta1())
+		rs, err := deploymentutil.GetNewReplicaSet(d, m.K8c.AppsV1())
 		if err != nil {
 			return false, errors.Wrap(err, "error getting new replica set")
 		}

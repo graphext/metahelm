@@ -63,11 +63,11 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 		failedpods := []FailedPod{}
 		switch m.Head.Kind {
 		case "Deployment":
-			d, err := kc.ExtensionsV1beta1().Deployments(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
+			d, err := kc.AppsV1().Deployments(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
 			if err != nil || d.Spec.Replicas == nil || d == nil {
 				return errors.Wrap(err, "error getting deployment")
 			}
-			rs, err := deploymentutil.GetNewReplicaSet(d, kc.ExtensionsV1beta1())
+			rs, err := deploymentutil.GetNewReplicaSet(d, kc.AppsV1())
 			if err != nil || rs == nil {
 				return errors.Wrap(err, "error getting replica set")
 			}
@@ -79,7 +79,7 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 			}
 			ml = j.Spec.Selector.MatchLabels
 		case "DaemonSet":
-			ds, err := kc.ExtensionsV1beta1().DaemonSets(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
+			ds, err := kc.AppsV1().DaemonSets(rls.Namespace).Get(m.Head.Metadata.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrap(err, "error getting daemonset")
 			}
@@ -120,11 +120,11 @@ func (ce ChartError) PopulateFromRelease(rls *release.Release, kc K8sClient, max
 
 // PopulateFromDeployment finds the failed pods for a deployment and fills ChartError with names and logs of the failed pods
 func (ce ChartError) PopulateFromDeployment(namespace, deploymentName string, kc K8sClient, maxloglines uint) error {
-	d, err := kc.ExtensionsV1beta1().Deployments(namespace).Get(deploymentName, metav1.GetOptions{})
+	d, err := kc.AppsV1().Deployments(namespace).Get(deploymentName, metav1.GetOptions{})
 	if err != nil || d.Spec.Replicas == nil || d == nil {
 		return errors.Wrap(err, "error getting deployment")
 	}
-	rs, err := deploymentutil.GetNewReplicaSet(d, kc.ExtensionsV1beta1())
+	rs, err := deploymentutil.GetNewReplicaSet(d, kc.AppsV1())
 	if err != nil || rs == nil {
 		return errors.Wrap(err, "error getting replica set")
 	}
