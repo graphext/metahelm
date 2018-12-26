@@ -248,7 +248,8 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			}
 			opstr = "upgrade"
 			uops := []helm.UpdateOption{
-				helm.ReuseValues(true),
+				// By not setting either ResetValues or ReuseValues, Helm will reuse the current release values
+				// only if no values are provided in the update request
 				helm.UpgradeWait(c.WaitUntilHelmSaysItsReady),
 				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())),
 			}
