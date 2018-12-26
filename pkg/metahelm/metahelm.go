@@ -248,7 +248,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			}
 			opstr = "upgrade"
 			uops := []helm.UpdateOption{
-				helm.ReuseValues(true),
+				helm.ResetValues(true),
 				helm.UpgradeWait(c.WaitUntilHelmSaysItsReady),
 				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())),
 			}
