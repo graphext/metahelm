@@ -22,6 +22,8 @@ import (
 	reltesting "k8s.io/helm/pkg/releasetesting"
 )
 
+const maxParallelism = 20
+
 // RunReleaseTest runs pre-defined tests stored as hooks on a given release
 func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream services.ReleaseService_RunReleaseTestServer) error {
 
@@ -36,11 +38,18 @@ func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream 
 		return err
 	}
 
+	parallelism := uint32(maxParallelism)
+	if req.MaxParallel != 0 {
+		parallelism = req.MaxParallel
+	}
+
 	testEnv := &reltesting.Environment{
-		Namespace:  rel.Namespace,
-		KubeClient: s.env.KubeClient,
-		Timeout:    req.Timeout,
-		Stream:     stream,
+		Namespace:   rel.Namespace,
+		KubeClient:  s.env.KubeClient,
+		Timeout:     req.Timeout,
+		Stream:      stream,
+		Parallel:    req.Parallel,
+		Parallelism: parallelism,
 	}
 	s.Log("running tests for release %s", rel.Name)
 	tSuite, err := reltesting.NewTestSuite(rel)
@@ -58,6 +67,10 @@ func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream 
 		StartedAt:   tSuite.StartedAt,
 		CompletedAt: tSuite.CompletedAt,
 		Results:     tSuite.Results,
+	}
+
+	if req.Logs {
+		testEnv.GetLogs(tSuite.TestManifests)
 	}
 
 	if req.Cleanup {

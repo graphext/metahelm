@@ -88,12 +88,12 @@ func (c *FakeClient) InstallRelease(chStr, ns string, opts ...InstallOption) (*r
 	return c.InstallReleaseFromChart(chart, ns, opts...)
 }
 
-// InstallRelease creates a new release and returns a InstallReleaseResponse containing that release and accepts a context
+// InstallReleaseWithContext creates a new release and returns a InstallReleaseResponse containing that release and accepts a context
 func (c *FakeClient) InstallReleaseWithContext(ctx context.Context, chStr, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
 	return c.InstallRelease(chStr, ns, opts...)
 }
 
-// InstallReleaseFromChart adds a new MockRelease to the fake client and returns a InstallReleaseResponse containing that release and accepts a context
+// InstallReleaseFromChartWithContext adds a new MockRelease to the fake client and returns a InstallReleaseResponse containing that release and accepts a context
 func (c *FakeClient) InstallReleaseFromChartWithContext(ctx context.Context, chart *chart.Chart, ns string, opts ...InstallOption) (*rls.InstallReleaseResponse, error) {
 	return c.InstallReleaseFromChart(chart, ns, opts...)
 }
@@ -166,12 +166,12 @@ func (c *FakeClient) UpdateRelease(rlsName string, chStr string, opts ...UpdateO
 	return c.UpdateReleaseFromChart(rlsName, &chart.Chart{}, opts...)
 }
 
-// UpdateRelease returns an UpdateReleaseResponse containing the updated release, if it exists and accepts a context
+// UpdateReleaseWithContext returns an UpdateReleaseResponse containing the updated release, if it exists and accepts a context
 func (c *FakeClient) UpdateReleaseWithContext(ctx context.Context, rlsName string, chStr string, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
 	return c.UpdateRelease(rlsName, chStr, opts...)
 }
 
-// UpdateReleaseFromChart returns an UpdateReleaseResponse containing the updated release, if it exists and accepts a context
+// UpdateReleaseFromChartWithContext returns an UpdateReleaseResponse containing the updated release, if it exists and accepts a context
 func (c *FakeClient) UpdateReleaseFromChartWithContext(ctx context.Context, rlsName string, newChart *chart.Chart, opts ...UpdateOption) (*rls.UpdateReleaseResponse, error) {
 	return c.UpdateReleaseFromChart(rlsName, newChart, opts...)
 }
@@ -250,7 +250,22 @@ func (c *FakeClient) ReleaseContent(rlsName string, opts ...ContentOption) (resp
 
 // ReleaseHistory returns a release's revision history.
 func (c *FakeClient) ReleaseHistory(rlsName string, opts ...HistoryOption) (*rls.GetHistoryResponse, error) {
-	return &rls.GetHistoryResponse{Releases: c.Rels}, nil
+	reqOpts := c.Opts
+	for _, opt := range opts {
+		opt(&reqOpts)
+	}
+	maxLen := int(reqOpts.histReq.Max)
+
+	var resp rls.GetHistoryResponse
+	for _, rel := range c.Rels {
+		if maxLen > 0 && len(resp.Releases) >= maxLen {
+			return &resp, nil
+		}
+		if rel.Name == rlsName {
+			resp.Releases = append(resp.Releases, rel)
+		}
+	}
+	return &resp, nil
 }
 
 // RunReleaseTest executes a pre-defined tests on a release
@@ -278,7 +293,7 @@ func (c *FakeClient) RunReleaseTest(rlsName string, opts ...ReleaseTestOption) (
 	return results, errc
 }
 
-// PingTiller pings the Tiller pod and ensure's that it is up and running
+// PingTiller pings the Tiller pod and ensures that it is up and running
 func (c *FakeClient) PingTiller() error {
 	return nil
 }
