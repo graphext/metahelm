@@ -55,6 +55,7 @@ func (m *Manager) log(msg string, args ...interface{}) {
 type options struct {
 	k8sNamespace, tillerNamespace, releaseNamePrefix string
 	installCallback                                  InstallCallback
+	completedCallback                                CompletedCallback
 	timeout                                          time.Duration
 }
 
@@ -95,6 +96,13 @@ func WithInstallCallback(cb InstallCallback) InstallOption {
 	}
 }
 
+// WithCompletedCallback specifies a callback function that will be invoked immediately after each chart installation completes
+func WithCompletedCallback(cb CompletedCallback) InstallOption {
+	return func(op *options) {
+		op.completedCallback = cb
+	}
+}
+
 // CallbackAction indicates the decision made by the callback
 type InstallCallbackAction int
 
@@ -110,6 +118,10 @@ const (
 // InstallCallback is a function that decides whether to proceed with an individual chart installation
 // This will be called concurrently from multiple goroutines, so make sure everything is threadsafe
 type InstallCallback func(Chart) InstallCallbackAction
+
+// CompletedCallback is a function that is called upon completion of each individual chart upgrade/install. The error returned by Helm (if any) will be included.
+// This will be called concurrently from multiple goroutines, so make sure everything is threadsafe. Also make sure to return promptly, as execution will block waiting for the callback to complete.
+type CompletedCallback func(Chart, error)
 
 // ReleaseMap is a map of chart title to installed release name
 type ReleaseMap map[string]string
@@ -264,6 +276,10 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			}
 			m.log("%v: running helm upgrade", obj.Name())
 			_, err = m.HC.UpdateReleaseWithContext(ctx, relname, c.Location, uops...)
+			if ops.completedCallback != nil {
+				m.log("%v: running completed callback", obj.Name())
+				ops.completedCallback(*cmap[obj.Name()], err)
+			}
 			if err != nil {
 				return m.charterror(err, ops, c, "upgrading")
 			}
@@ -275,6 +291,10 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				helm.ReleaseName(ReleaseName(ops.releaseNamePrefix+c.Title)),
 				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
 				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
+			if ops.completedCallback != nil {
+				m.log("%v: running completed callback", obj.Name())
+				ops.completedCallback(*cmap[obj.Name()], err)
+			}
 			if err != nil {
 				return m.charterror(err, ops, c, "installing")
 			}
