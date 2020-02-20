@@ -120,7 +120,7 @@ const (
 type InstallCallback func(Chart) InstallCallbackAction
 
 // CompletedCallback is a function that is called upon completion of each individual chart upgrade/install. The error returned by Helm (if any) will be included.
-// This will be called concurrently from multiple goroutines, so make sure everything is threadsafe. Also make sure to return prompty, as execution will block waiting for the callback to complete.
+// This will be called concurrently from multiple goroutines, so make sure everything is threadsafe. Also make sure to return promptly, as execution will block waiting for the callback to complete.
 type CompletedCallback func(Chart, error)
 
 // ReleaseMap is a map of chart title to installed release name
