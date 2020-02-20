@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -92,6 +93,27 @@ func TestGraphInstall(t *testing.T) {
 		t.Fatalf("error installing: %v", err)
 	}
 	t.Logf("rm: %v\n", rm)
+}
+
+func TestGraphInstallCompletedCallback(t *testing.T) {
+	fkc := fake.NewSimpleClientset(gentestobjs()...)
+	fhc := &helm.FakeClient{}
+	m := Manager{
+		LogF: t.Logf,
+		K8c:  fkc,
+		HC:   fhc,
+	}
+	ChartWaitPollInterval = 1 * time.Second
+	var called int64
+	_, err := m.Install(context.Background(), testCharts, WithCompletedCallback(func(c Chart, err error) {
+		atomic.AddInt64(&called, 1)
+	}))
+	if err != nil {
+		t.Fatalf("error installing: %v", err)
+	}
+	if called != 4 {
+		t.Fatalf("unexpected called result (wanted 4): %v", called)
+	}
 }
 
 func TestGraphInstallWaitCallback(t *testing.T) {
