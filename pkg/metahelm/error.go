@@ -23,7 +23,7 @@ type FailedPod struct {
 	Conditions        []corev1.PodCondition    `json:"conditions"`
 	ContainerStatuses []corev1.ContainerStatus `json:"container_statuses"`
 	// Logs is a map of container name to raw log (stdout/stderr) output
-	Logs map[string][]byte
+	Logs map[string][]byte `json:"logs"`
 }
 
 // ChartError is a chart install/upgrade error due to failing Kubernetes resources. It contains all Deployment, Job or DaemonSet-related pods that appear to
