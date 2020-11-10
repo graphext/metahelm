@@ -255,20 +255,7 @@ func TestUnmarshalError(t *testing.T) {
 	ce := NewChartError(errors.New("some helm error"))
 	err := ce.PopulateFromDeployment(DefaultK8sNamespace, "foo", kc, 500)
 	if err != nil {
-		t.Fatalf("should have succeeded: %v", err)
-	}
-	if i := len(ce.FailedDeployments); i != 1 {
-		t.Fatalf("unexpected length for failed deployments: %v", i)
-	}
-	fp, ok := ce.FailedDeployments["foo"]
-	if !ok {
-		t.Fatalf("foo missing")
-	}
-	if i := len(fp); i != 1 {
-		t.Fatalf("unexpected length for failed pod: %v", i)
-	}
-	if ec := fp[0].ContainerStatuses[0].State.Terminated.ExitCode; ec != 128 {
-		t.Fatalf("bad exit code: %v", ec)
+		t.Fatalf("could not populate chart error from deployment: %v", err)
 	}
 
 	encodedCE, err := json.Marshal(ce)
