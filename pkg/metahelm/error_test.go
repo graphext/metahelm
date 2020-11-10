@@ -273,7 +273,7 @@ func TestUnmarshalError(t *testing.T) {
 
 	encodedCE, err := json.Marshal(ce)
 	if err != nil {
-		t.Fatalf("unable to encode error")
+		t.Fatalf("unable to marshal error: %v", err)
 	}
 
 	var outputCE ChartError

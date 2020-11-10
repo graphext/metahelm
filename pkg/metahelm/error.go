@@ -30,7 +30,8 @@ type FailedPod struct {
 // be in a failed state, including up to MaxPodLogLines of log data for each.
 type ChartError struct {
 	// HelmError is the original error returned by Helm
-	HelmError error `json:"helm_error"`
+	// We always omit this value when json marshaling/unmarshaling since we would otherwise have to implement the UnmarshalJSON and MarshalJSON methods.
+	HelmError error `json:"-"`
 	// Level is the chart level (zero-indexed) at which the error occurred
 	Level uint `json:"level"`
 	// FailedDaemonSets is map of DaemonSet name to failed pods
