@@ -33,7 +33,7 @@ type ChartError struct {
 	// We always omit this value when json marshaling/unmarshaling since we would otherwise have to implement the UnmarshalJSON and MarshalJSON methods.
 	HelmError error `json:"-"`
 	// HelmErrorString is the error string of the original error returned by Helm
-	HelmErrorString string `json:"error"`
+	HelmErrorString string `json:"helm_error_string"`
 	// Level is the chart level (zero-indexed) at which the error occurred
 	Level uint `json:"level"`
 	// FailedDaemonSets is map of DaemonSet name to failed pods
@@ -46,9 +46,13 @@ type ChartError struct {
 
 // NewChartError returns an initialized empty ChartError
 func NewChartError(err error) ChartError {
+	errorString := ""
+	if err != nil {
+		errorString = err.Error()
+	}
 	return ChartError{
 		HelmError:         err,
-		HelmErrorString:   err.Error(),
+		HelmErrorString:   errorString,
 		FailedDaemonSets:  make(map[string][]FailedPod),
 		FailedDeployments: make(map[string][]FailedPod),
 		FailedJobs:        make(map[string][]FailedPod),
