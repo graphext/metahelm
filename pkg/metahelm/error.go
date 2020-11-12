@@ -29,8 +29,11 @@ type FailedPod struct {
 // ChartError is a chart install/upgrade error due to failing Kubernetes resources. It contains all Deployment, Job or DaemonSet-related pods that appear to
 // be in a failed state, including up to MaxPodLogLines of log data for each.
 type ChartError struct {
-	// HelmError is the original error string returned by Helm
-	HelmError string `json:"error"`
+	// HelmError is the original error returned by Helm
+	// We always omit this value when json marshaling/unmarshaling since we would otherwise have to implement the UnmarshalJSON and MarshalJSON methods.
+	HelmError error `json:"-"`
+	// HelmErrorString is the error string of the original error returned by Helm
+	HelmErrorString string `json:"error"`
 	// Level is the chart level (zero-indexed) at which the error occurred
 	Level uint `json:"level"`
 	// FailedDaemonSets is map of DaemonSet name to failed pods
@@ -44,7 +47,8 @@ type ChartError struct {
 // NewChartError returns an initialized empty ChartError
 func NewChartError(err error) ChartError {
 	return ChartError{
-		HelmError:         err.Error(),
+		HelmError:         err,
+		HelmErrorString:   err.Error(),
 		FailedDaemonSets:  make(map[string][]FailedPod),
 		FailedDeployments: make(map[string][]FailedPod),
 		FailedJobs:        make(map[string][]FailedPod),
@@ -53,7 +57,7 @@ func NewChartError(err error) ChartError {
 
 // Error satisfies the error interface
 func (ce ChartError) Error() string {
-	return errors.Wrap(fmt.Errorf("error executing level %v: failed resources (deployments: %v; jobs: %v; daemonsets: %v)", ce.Level, len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedDaemonSets)), ce.HelmError).Error()
+	return errors.Wrap(fmt.Errorf("error executing level %v: failed resources (deployments: %v; jobs: %v; daemonsets: %v)", ce.Level, len(ce.FailedDeployments), len(ce.FailedJobs), len(ce.FailedDaemonSets)), ce.HelmErrorString).Error()
 }
 
 // PopulateFromRelease finds the failed Jobs and Pods for a given release and fills ChartError with names and logs of the failed resources
