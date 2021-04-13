@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	"helm.sh/helm/v3/pkg/release"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	mtypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/helm/pkg/proto/hapi/release"
 )
 
 func TestErrorPopulateFromRelease(t *testing.T) {

@@ -14,8 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	mtypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/helm/pkg/helm"
-	rls "k8s.io/helm/pkg/proto/hapi/release"
 )
 
 var testCharts = []Chart{
