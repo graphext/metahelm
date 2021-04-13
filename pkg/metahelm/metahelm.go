@@ -60,10 +60,10 @@ func (m *Manager) log(msg string, args ...interface{}) {
 }
 
 type options struct {
-	k8sNamespace, tillerNamespace, releaseNamePrefix string
-	installCallback                                  InstallCallback
-	completedCallback                                CompletedCallback
-	timeout                                          time.Duration
+	k8sNamespace, releaseNamePrefix string
+	installCallback                 InstallCallback
+	completedCallback               CompletedCallback
+	timeout                         time.Duration
 }
 
 type InstallOption func(*options)
@@ -72,13 +72,6 @@ type InstallOption func(*options)
 func WithK8sNamespace(ns string) InstallOption {
 	return func(op *options) {
 		op.k8sNamespace = ns
-	}
-}
-
-// WithTillerNamespace specifies the namespace where the Tiller service can be found
-func WithTillerNamespace(tns string) InstallOption {
-	return func(op *options) {
-		op.tillerNamespace = tns
 	}
 }
 
