@@ -330,9 +330,6 @@ func buildReleaseMap(instConfig installCfg, cs []metahelm.Chart) metahelm.Releas
 
 func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
 	var options []metahelm.InstallOption
-	if instConfig.tillerNS != "" {
-		options = append(options, metahelm.WithTillerNamespace(instConfig.tillerNS))
-	}
 	if instConfig.k8sNS != "" {
 		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
 	}
