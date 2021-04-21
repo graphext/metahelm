@@ -3,17 +3,28 @@ package metahelm
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	dockerauth "github.com/deislabs/oras/pkg/auth/docker"
+	"helm.sh/helm/v3/internal/experimental/registry"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chartutil"
+	kubefake "helm.sh/helm/v3/pkg/kube/fake"
+	"helm.sh/helm/v3/pkg/storage"
+	"helm.sh/helm/v3/pkg/storage/driver"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	mtypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes"
 )
 
 var testCharts = []Chart{
@@ -77,13 +88,139 @@ func gentestobjs() []runtime.Object {
 	return append(objs, &rsl)
 }
 
+// Copied from helm.sh/helm/v3/pkg/action/action_test.go
+func actionConfigFixture(t *testing.T) *Configuration {
+	t.Helper()
+
+	client, err := dockerauth.NewClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, err := client.Resolver(context.Background(), http.DefaultClient, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tdir, err := ioutil.TempDir("", "helm-action-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { os.RemoveAll(tdir) })
+
+	cache, err := registry.NewCache(
+		registry.CacheOptDebug(true),
+		registry.CacheOptRoot(filepath.Join(tdir, registry.CacheRootDir)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registryClient, err := registry.NewClient(
+		registry.ClientOptAuthorizer(&registry.Authorizer{
+			Client: client,
+		}),
+		registry.ClientOptResolver(&registry.Resolver{
+			Resolver: resolver,
+		}),
+		registry.ClientOptCache(cache),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &Configuration{
+		Releases:       storage.Init(driver.NewMemory()),
+		KubeClient:     &kubefake.FailingKubeClient{PrintingKubeClient: kubefake.PrintingKubeClient{Out: ioutil.Discard}},
+		Capabilities:   chartutil.DefaultCapabilities,
+		RegistryClient: registryClient,
+		Log: func(format string, v ...interface{}) {
+			t.Helper()
+			if *verbose {
+				t.Logf(format, v...)
+			}
+		},
+	}
+}
+
+func fakeRegistryCache(t *testing.T) *registry.Cache {
+	t.Helper()
+	tdir, err := ioutil.TempDir("", "helm-action-test")
+	if err != nil {
+		t.Fatalf("error creating temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tdir) })
+	cache, err := registry.NewCache(
+		registry.CacheOptDebug(true),
+		registry.CacheOptRoot(filepath.Join(tdir, registry.CacheRootDir)),
+	)
+	if err != nil {
+		t.Fatalf("error creating cache: %v", err)
+	}
+	return cache
+}
+
+func fakeRegistryClient(t *testing.T) *registry.Client {
+	t.Helper()
+	client, err := dockerauth.NewClient()
+	if err != nil {
+		t.Fatalf("error creating Docker auth client: %v", err)
+	}
+	resolver, err := client.Resolver(context.Background(), http.DefaultClient, false)
+	if err != nil {
+		t.Fatalf("error creating Docker auth client resolver: %v", err)
+	}
+	cache := fakeRegistryCache(t)
+	registryClient, err := registry.NewClient(
+		registry.ClientOptAuthorizer(&registry.Authorizer{
+			Client: client,
+		}),
+		registry.ClientOptResolver(&registry.Resolver{
+			Resolver: resolver,
+		}),
+		registry.ClientOptCache(cache),
+	)
+	if err != nil {
+		t.Fatalf("error creating registry client: %v", err)
+	}
+	return registryClient
+}
+
+func fakeHelmConfiguration(t *testing.T) *action.Configuration {
+	t.Helper()
+	releases := storage.Init(nil)
+	kubeClient := &kubefake.PrintingKubeClient{Out: ioutil.Discard}
+	registryClient := fakeRegistryClient(t)
+	return &action.Configuration{
+		Releases:       releases,
+		KubeClient:     kubeClient,
+		RegistryClient: registryClient,
+		Capabilities:   chartutil.DefaultCapabilities,
+		Log: func(format string, v ...interface{}) {
+			t.Helper()
+			t.Logf(format, v)
+		},
+	}
+}
+
+func fakeKubernetesClientset(t *testing.T, cfg *action.Configuration) kubernetes.Interface {
+	t.Helper()
+	clientset, err := cfg.KubernetesClientSet()
+	if err != nil {
+		t.Fatalf("error getting Kubernetes clientset from Helm action configuration: %v", err)
+	}
+	return clientset
+}
+
 func TestGraphInstall(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
-		HC:   fhc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	rm, err := m.Install(context.Background(), testCharts)
@@ -94,12 +231,13 @@ func TestGraphInstall(t *testing.T) {
 }
 
 func TestGraphInstallCompletedCallback(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
-		HC:   fhc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	var called int64
@@ -115,11 +253,13 @@ func TestGraphInstallCompletedCallback(t *testing.T) {
 }
 
 func TestGraphInstallWaitCallback(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
-		K8c: fkc,
-		HC:  fhc,
+		LogF: t.Logf,
+		K8c:  fkc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	var i int
@@ -144,11 +284,13 @@ func TestGraphInstallWaitCallback(t *testing.T) {
 }
 
 func TestGraphInstallAbortCallback(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
-		K8c: fkc,
-		HC:  fhc,
+		LogF: t.Logf,
+		K8c:  fkc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	var i int
@@ -170,11 +312,13 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 }
 
 func TestGraphInstallTimeout(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
-		K8c: fkc,
-		HC:  fhc,
+		LogF: t.Logf,
+		K8c:  fkc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	cb := func(c Chart) InstallCallbackAction {
@@ -253,12 +397,13 @@ func TestValidateCharts(t *testing.T) {
 }
 
 func TestGraphUpgrade(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
-		HC:   fhc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	um := ReleaseMap{}
@@ -276,12 +421,13 @@ func TestGraphUpgrade(t *testing.T) {
 }
 
 func TestGraphUpgradeMissingRelease(t *testing.T) {
-	fkc := fake.NewSimpleClientset(gentestobjs()...)
-	fhc := &helm.FakeClient{}
+	cfg := fakeHelmConfiguration(t)
+	fkc := fakeKubernetesClientset(t, cfg)
+	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
-		HC:   fhc,
+		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	um := ReleaseMap{}
