@@ -5,11 +5,10 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.10
+      - image: cimg/go:1.16
 
-    working_directory: /go/src/github.com/dollarshaveclub/metahelm
+    working_directory: /tmp/metahelm
     steps:
       - checkout
-      - run: go get -v -t -d ./...
       - run: go test -v ./...
       - run: go vet ./...
