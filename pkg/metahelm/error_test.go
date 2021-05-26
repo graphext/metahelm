@@ -1,6 +1,7 @@
 package metahelm
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -114,7 +115,7 @@ metadata:
 	r.Spec.Template = d.Spec.Template
 	kc := fake.NewSimpleClientset(r, d, j, p, pj)
 	ce := NewChartError(errors.New("some helm error"))
-	err := ce.PopulateFromRelease(rls, kc, 100)
+	err := ce.PopulateFromRelease(context.Background(), rls, kc, 100)
 	if err != nil {
 		t.Fatalf("should have succeeded: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestErrorPopulateFromDeployment(t *testing.T) {
 	r.Spec.Template = d.Spec.Template
 	kc := fake.NewSimpleClientset(r, d, p)
 	ce := NewChartError(errors.New("some helm error"))
-	err := ce.PopulateFromDeployment(DefaultK8sNamespace, "foo", kc, 500)
+	err := ce.PopulateFromDeployment(context.Background(), DefaultK8sNamespace, "foo", kc, 500)
 	if err != nil {
 		t.Fatalf("should have succeeded: %v", err)
 	}
@@ -253,7 +254,7 @@ func TestUnmarshalError(t *testing.T) {
 	r.Spec.Template = d.Spec.Template
 	kc := fake.NewSimpleClientset(r, d, p)
 	ce := NewChartError(errors.New("some helm error"))
-	err := ce.PopulateFromDeployment(DefaultK8sNamespace, "foo", kc, 500)
+	err := ce.PopulateFromDeployment(context.Background(), DefaultK8sNamespace, "foo", kc, 500)
 	if err != nil {
 		t.Fatalf("could not populate chart error from deployment: %v", err)
 	}

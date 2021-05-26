@@ -3,46 +3,49 @@ package metahelm
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"path/filepath"
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
 
-	dockerauth "github.com/deislabs/oras/pkg/auth/docker"
-	"helm.sh/helm/v3/internal/experimental/registry"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
+	"helm.sh/helm/v3/pkg/kube"
+	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage"
+	"helm.sh/helm/v3/pkg/storage/driver"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	mtypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var testCharts = []Chart{
 	Chart{
 		Title:                      "toplevel",
-		Location:                   "/foo",
+		Location:                   "testdata/chart",
 		WaitUntilDeployment:        "toplevel",
 		DeploymentHealthIndication: IgnorePodHealth,
 		DependencyList:             []string{"someservice", "anotherthing", "redis"},
 	},
 	Chart{
 		Title:                      "someservice",
-		Location:                   "/foo",
+		Location:                   "testdata/chart",
 		WaitUntilDeployment:        "someservice",
 		DeploymentHealthIndication: IgnorePodHealth,
 	},
 	Chart{
 		Title:                      "anotherthing",
-		Location:                   "/foo",
+		Location:                   "testdata/chart",
 		WaitUntilDeployment:        "anotherthing",
 		DeploymentHealthIndication: AllPodsHealthy,
 		WaitTimeout:                2 * time.Second,
@@ -50,7 +53,7 @@ var testCharts = []Chart{
 	},
 	Chart{
 		Title:                      "redis",
-		Location:                   "/foo",
+		Location:                   "testdata/chart",
 		DeploymentHealthIndication: IgnorePodHealth,
 	},
 }
@@ -74,6 +77,8 @@ func gentestobjs() []runtime.Object {
 		r.Status.ReadyReplicas = 1
 		r.Name = "replicaset-" + c.Name()
 		r.Namespace = DefaultK8sNamespace
+		d.Spec.Replicas = &reps
+		d.Status.ReadyReplicas = 1
 		r.Labels = d.Spec.Template.Labels
 		d.Labels = d.Spec.Template.Labels
 		d.ObjectMeta.UID = mtypes.UID(c.Name() + "-deployment")
@@ -87,79 +92,89 @@ func gentestobjs() []runtime.Object {
 	return append(objs, &rsl)
 }
 
-func fakeRegistryCache(t *testing.T) *registry.Cache {
-	t.Helper()
-	tdir, err := ioutil.TempDir("", "helm-action-test")
-	if err != nil {
-		t.Fatalf("error creating temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(tdir) })
-	cache, err := registry.NewCache(
-		registry.CacheOptDebug(true),
-		registry.CacheOptRoot(filepath.Join(tdir, registry.CacheRootDir)),
-	)
-	if err != nil {
-		t.Fatalf("error creating cache: %v", err)
-	}
-	return cache
+// testKubeClient is a stub helm v3 internal kube client for testing purposes
+type testKubeClient struct {
 }
 
-func fakeRegistryClient(t *testing.T) *registry.Client {
-	t.Helper()
-	client, err := dockerauth.NewClient()
-	if err != nil {
-		t.Fatalf("error creating Docker auth client: %v", err)
-	}
-	resolver, err := client.Resolver(context.Background(), http.DefaultClient, false)
-	if err != nil {
-		t.Fatalf("error creating Docker auth client resolver: %v", err)
-	}
-	cache := fakeRegistryCache(t)
-	registryClient, err := registry.NewClient(
-		registry.ClientOptAuthorizer(&registry.Authorizer{
-			Client: client,
-		}),
-		registry.ClientOptResolver(&registry.Resolver{
-			Resolver: resolver,
-		}),
-		registry.ClientOptCache(cache),
-	)
-	if err != nil {
-		t.Fatalf("error creating registry client: %v", err)
-	}
-	return registryClient
+var _ kube.Interface = &testKubeClient{}
+
+func (tkc *testKubeClient) Create(resources kube.ResourceList) (*kube.Result, error) {
+	return &kube.Result{}, nil
+}
+
+func (tkc *testKubeClient) Wait(resources kube.ResourceList, timeout time.Duration) error {
+	return nil
+}
+
+func (tkc *testKubeClient) WaitWithJobs(resources kube.ResourceList, timeout time.Duration) error {
+	return nil
+}
+
+func (tkc *testKubeClient) Delete(resources kube.ResourceList) (*kube.Result, []error) {
+	return &kube.Result{}, nil
+}
+
+func (tkc *testKubeClient) WatchUntilReady(resources kube.ResourceList, timeout time.Duration) error {
+	return nil
+}
+
+func (tkc *testKubeClient) Update(original, target kube.ResourceList, force bool) (*kube.Result, error) {
+	return &kube.Result{}, nil
+}
+
+func (tkc *testKubeClient) Build(reader io.Reader, validate bool) (kube.ResourceList, error) {
+	return kube.ResourceList{}, nil
+}
+
+func (tkc *testKubeClient) WaitAndGetCompletedPodPhase(name string, timeout time.Duration) (corev1.PodPhase, error) {
+	return "", nil
+}
+
+func (tkc *testKubeClient) IsReachable() error {
+	return nil
+}
+
+var _ action.RESTClientGetter = &testKubeClient{}
+
+func (tkc *testKubeClient) ToRESTConfig() (*rest.Config, error) {
+	return nil, nil
+}
+
+func (tkc *testKubeClient) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
+	return nil, nil
+}
+
+func (tkc *testKubeClient) ToRESTMapper() (meta.RESTMapper, error) {
+	return nil, nil
+}
+
+func (tkc *testKubeClient) ToRawKubeConfigLoader() clientcmd.ClientConfig {
+	return nil
 }
 
 func fakeHelmConfiguration(t *testing.T) *action.Configuration {
 	t.Helper()
-	releases := storage.Init(nil)
-	kubeClient := &kubefake.PrintingKubeClient{Out: ioutil.Discard}
-	registryClient := fakeRegistryClient(t)
-	return &action.Configuration{
-		Releases:       releases,
-		KubeClient:     kubeClient,
-		RegistryClient: registryClient,
+	ac := &action.Configuration{
+		Releases:       storage.Init(driver.NewMemory()),
+		KubeClient:     &testKubeClient{},
 		Capabilities:   chartutil.DefaultCapabilities,
 		Log: func(format string, v ...interface{}) {
 			t.Helper()
 			t.Logf(format, v)
 		},
 	}
+	return ac
 }
 
-func fakeKubernetesClientset(t *testing.T, cfg *action.Configuration) kubernetes.Interface {
+func fakeKubernetesClientset(t *testing.T) kubernetes.Interface {
 	t.Helper()
-	clientset, err := cfg.KubernetesClientSet()
-	if err != nil {
-		t.Fatalf("error getting Kubernetes clientset from Helm action configuration: %v", err)
-	}
-	return clientset
+	kubeClient := k8sfake.NewSimpleClientset(gentestobjs()...)
+	return kubeClient
 }
 
 func TestGraphInstall(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -174,9 +189,8 @@ func TestGraphInstall(t *testing.T) {
 }
 
 func TestGraphInstallCompletedCallback(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -196,9 +210,8 @@ func TestGraphInstallCompletedCallback(t *testing.T) {
 }
 
 func TestGraphInstallWaitCallback(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -227,9 +240,8 @@ func TestGraphInstallWaitCallback(t *testing.T) {
 }
 
 func TestGraphInstallAbortCallback(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -255,9 +267,8 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 }
 
 func TestGraphInstallTimeout(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -340,9 +351,8 @@ func TestValidateCharts(t *testing.T) {
 }
 
 func TestGraphUpgrade(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -350,13 +360,15 @@ func TestGraphUpgrade(t *testing.T) {
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	um := ReleaseMap{}
-	rels := []*rls.Release{}
 	for i, c := range testCharts {
 		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
 		um[c.Title] = rn
-		rels = append(rels, &rls.Release{Name: rn})
+		cfg.Releases.Create(&release.Release{
+			Name: rn,
+			Namespace: DefaultK8sNamespace,
+			Info: &release.Info{},
+		})
 	}
-	fhc.Rels = rels
 	err := m.Upgrade(context.Background(), um, testCharts)
 	if err != nil {
 		t.Fatalf("error upgrading: %v", err)
@@ -364,9 +376,8 @@ func TestGraphUpgrade(t *testing.T) {
 }
 
 func TestGraphUpgradeMissingRelease(t *testing.T) {
+	fkc := fakeKubernetesClientset(t)
 	cfg := fakeHelmConfiguration(t)
-	fkc := fakeKubernetesClientset(t, cfg)
-	cfg.KubernetesClientSet()
 	m := Manager{
 		LogF: t.Logf,
 		K8c:  fkc,
@@ -374,13 +385,15 @@ func TestGraphUpgradeMissingRelease(t *testing.T) {
 	}
 	ChartWaitPollInterval = 1 * time.Second
 	um := ReleaseMap{}
-	rels := []*rls.Release{}
 	for i, c := range testCharts {
 		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
 		um[c.Title] = rn
-		rels = append(rels, &rls.Release{Name: rn})
+		cfg.Releases.Create(&release.Release{
+			Name: rn,
+			Namespace: DefaultK8sNamespace,
+			Info: &release.Info{},
+		})
 	}
-	fhc.Rels = rels
 	delete(um, testCharts[0].Title)
 	err := m.Upgrade(context.Background(), um, testCharts)
 	if err == nil {
