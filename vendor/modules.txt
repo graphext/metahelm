@@ -49,6 +49,10 @@ github.com/PuerkitoBio/urlesc
 github.com/asaskevich/govalidator
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
+# github.com/bitly/go-simplejson v0.5.0
+## explicit
+# github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
+## explicit
 # github.com/bshuster-repo/logrus-logstash-hook v1.0.0
 ## explicit
 # github.com/bugsnag/bugsnag-go v2.1.0+incompatible
@@ -80,7 +84,6 @@ github.com/cyphar/filepath-securejoin
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/deislabs/oras v0.10.0
-## explicit
 github.com/deislabs/oras/pkg/artifact
 github.com/deislabs/oras/pkg/auth
 github.com/deislabs/oras/pkg/auth/docker
