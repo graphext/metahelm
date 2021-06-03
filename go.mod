@@ -11,6 +11,7 @@ require (
 	github.com/bugsnag/panicwrap v1.3.2 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/docker/spdystream v0.0.0-20160310174837-449fdfce4d96 // indirect
 	github.com/garyburd/redigo v1.6.2 // indirect
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gorilla/handlers v1.5.1 // indirect
@@ -28,13 +29,13 @@ require (
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	gonum.org/v1/gonum v0.9.1
 	gopkg.in/yaml.v2 v2.4.0
-	helm.sh/helm/v3 v3.5.3
-	k8s.io/api v0.20.5
-	k8s.io/apimachinery v0.20.5
-	k8s.io/apiserver v0.20.5 // indirect
-	k8s.io/cli-runtime v0.20.2
-	k8s.io/client-go v0.20.5
+	helm.sh/helm/v3 v3.6.0
+	k8s.io/api v0.21.0
+	k8s.io/apimachinery v0.21.0
+	k8s.io/cli-runtime v0.21.0
+	k8s.io/client-go v0.21.0
 	rsc.io/letsencrypt v0.0.3 // indirect
+	sigs.k8s.io/kustomize v2.0.3+incompatible // indirect
 )
 
 replace (
