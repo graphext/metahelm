@@ -58,7 +58,10 @@ var testCharts = []Chart{
 	},
 }
 
-func gentestobjs() []runtime.Object {
+func gentestobjs(namespace string) []runtime.Object {
+	if namespace == "" {
+		namespace = DefaultK8sNamespace
+	}
 	objs := []runtime.Object{}
 	reps := int32(1)
 	iscontroller := true
@@ -76,7 +79,7 @@ func gentestobjs() []runtime.Object {
 		r.Spec.Replicas = &reps
 		r.Status.ReadyReplicas = 1
 		r.Name = "replicaset-" + c.Name()
-		r.Namespace = DefaultK8sNamespace
+		r.Namespace = namespace
 		d.Spec.Replicas = &reps
 		d.Status.ReadyReplicas = 1
 		r.Labels = d.Spec.Template.Labels
@@ -84,7 +87,7 @@ func gentestobjs() []runtime.Object {
 		d.ObjectMeta.UID = mtypes.UID(c.Name() + "-deployment")
 		r.ObjectMeta.OwnerReferences = []metav1.OwnerReference{metav1.OwnerReference{UID: d.ObjectMeta.UID, Controller: &iscontroller}}
 		d.Name = c.Name()
-		d.Namespace = DefaultK8sNamespace
+		d.Namespace = namespace
 		r.Spec.Template = d.Spec.Template
 		objs = append(objs, d)
 		rsl.Items = append(rsl.Items, *r)
@@ -155,9 +158,9 @@ func (tkc *testKubeClient) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 func fakeHelmConfiguration(t *testing.T) *action.Configuration {
 	t.Helper()
 	ac := &action.Configuration{
-		Releases:       storage.Init(driver.NewMemory()),
-		KubeClient:     &testKubeClient{},
-		Capabilities:   chartutil.DefaultCapabilities,
+		Releases:     storage.Init(driver.NewMemory()),
+		KubeClient:   &testKubeClient{},
+		Capabilities: chartutil.DefaultCapabilities,
 		Log: func(format string, v ...interface{}) {
 			t.Helper()
 			t.Logf(format, v)
@@ -166,14 +169,14 @@ func fakeHelmConfiguration(t *testing.T) *action.Configuration {
 	return ac
 }
 
-func fakeKubernetesClientset(t *testing.T) kubernetes.Interface {
+func fakeKubernetesClientset(t *testing.T, namespace string) kubernetes.Interface {
 	t.Helper()
-	kubeClient := k8sfake.NewSimpleClientset(gentestobjs()...)
+	kubeClient := k8sfake.NewSimpleClientset(gentestobjs(namespace)...)
 	return kubeClient
 }
 
 func TestGraphInstall(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	fkc := fakeKubernetesClientset(t, DefaultK8sNamespace)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -188,8 +191,31 @@ func TestGraphInstall(t *testing.T) {
 	t.Logf("rm: %v\n", rm)
 }
 
+func TestGraphInstallWithK8sNamespace(t *testing.T) {
+	ns := "foo"
+	fkc := fakeKubernetesClientset(t, ns)
+	cfg := fakeHelmConfiguration(t)
+	m := Manager{
+		LogF: t.Logf,
+		K8c:  fkc,
+		HCfg: cfg,
+	}
+	ChartWaitPollInterval = 1 * time.Second
+	rm, err := m.Install(context.Background(), testCharts, WithK8sNamespace(ns))
+	if err != nil {
+		t.Fatalf("error installing: %v", err)
+	}
+	t.Logf("rm: %v\n", rm)
+	for _, v := range rm {
+		r, _ := m.HCfg.Releases.Deployed(v)
+		if r.Namespace != ns {
+			t.Fatalf("error incorrect namespace; expected: (%v), got: (%v)", ns, v)
+		}
+	}
+}
+
 func TestGraphInstallCompletedCallback(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	fkc := fakeKubernetesClientset(t, DefaultK8sNamespace)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -210,7 +236,7 @@ func TestGraphInstallCompletedCallback(t *testing.T) {
 }
 
 func TestGraphInstallWaitCallback(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	fkc := fakeKubernetesClientset(t, DefaultK8sNamespace)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -240,7 +266,7 @@ func TestGraphInstallWaitCallback(t *testing.T) {
 }
 
 func TestGraphInstallAbortCallback(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	fkc := fakeKubernetesClientset(t, DefaultK8sNamespace)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -267,7 +293,7 @@ func TestGraphInstallAbortCallback(t *testing.T) {
 }
 
 func TestGraphInstallTimeout(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	fkc := fakeKubernetesClientset(t, DefaultK8sNamespace)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -351,7 +377,8 @@ func TestValidateCharts(t *testing.T) {
 }
 
 func TestGraphUpgrade(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	ns := DefaultK8sNamespace
+	fkc := fakeKubernetesClientset(t, ns)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -364,9 +391,9 @@ func TestGraphUpgrade(t *testing.T) {
 		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
 		um[c.Title] = rn
 		cfg.Releases.Create(&release.Release{
-			Name: rn,
-			Namespace: DefaultK8sNamespace,
-			Info: &release.Info{},
+			Name:      rn,
+			Namespace: ns,
+			Info:      &release.Info{},
 		})
 	}
 	err := m.Upgrade(context.Background(), um, testCharts)
@@ -376,7 +403,8 @@ func TestGraphUpgrade(t *testing.T) {
 }
 
 func TestGraphUpgradeMissingRelease(t *testing.T) {
-	fkc := fakeKubernetesClientset(t)
+	ns := DefaultK8sNamespace
+	fkc := fakeKubernetesClientset(t, ns)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
 		LogF: t.Logf,
@@ -389,9 +417,9 @@ func TestGraphUpgradeMissingRelease(t *testing.T) {
 		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
 		um[c.Title] = rn
 		cfg.Releases.Create(&release.Release{
-			Name: rn,
-			Namespace: DefaultK8sNamespace,
-			Info: &release.Info{},
+			Name:      rn,
+			Namespace: ns,
+			Info:      &release.Info{},
 		})
 	}
 	delete(um, testCharts[0].Title)
