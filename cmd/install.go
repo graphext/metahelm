@@ -72,8 +72,8 @@ func init() {
 	installCmd.Flags().StringVar(&instConfig.k8sNS, "k8s-namespace", "", "k8s namespace into which to install charts")
 	installCmd.Flags().StringVar(&instConfig.k8sCtx, "k8s-ctx", "", "k8s context")
 	installCmd.Flags().StringVar(&instConfig.releaseNamePrefix, "release-name-prefix", "", "Release name prefix")
-	installCmd.Flags().Float32Var(&instConfig.restConfig.QPS, "qps", 10, "Override maximum QPS to the master from this client")
-	installCmd.Flags().IntVar(&instConfig.restConfig.Burst, "burst", 20, "Override maximum burst for throttle")
+	installCmd.Flags().Float32Var(&instConfig.restConfig.QPS, "qps", 50, "Override maximum QPS to the master from this client")
+	installCmd.Flags().IntVar(&instConfig.restConfig.Burst, "burst", 100, "Override maximum burst for throttle")
 	RootCmd.AddCommand(installCmd)
 }
 
