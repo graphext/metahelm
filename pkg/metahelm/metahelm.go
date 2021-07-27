@@ -292,7 +292,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			m.log("%v: running helm install", obj.Name())
 			install := action.NewInstall(m.HCfg)
 			install.Wait = true
-			install.ReleaseName = ops.releaseNamePrefix + c.Title
+			install.ReleaseName = ReleaseName(ops.releaseNamePrefix + c.Title)
 			install.Namespace = ops.k8sNamespace
 			install.Timeout = c.WaitTimeout
 			var release *release.Release

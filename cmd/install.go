@@ -52,6 +52,7 @@ type installCfg struct {
 	k8sCtx            string
 	k8sNS             string
 	releaseNamePrefix string
+	restConfig        rest.Config
 }
 
 var instConfig installCfg
@@ -71,6 +72,8 @@ func init() {
 	installCmd.Flags().StringVar(&instConfig.k8sNS, "k8s-namespace", "", "k8s namespace into which to install charts")
 	installCmd.Flags().StringVar(&instConfig.k8sCtx, "k8s-ctx", "", "k8s context")
 	installCmd.Flags().StringVar(&instConfig.releaseNamePrefix, "release-name-prefix", "", "Release name prefix")
+	installCmd.Flags().Float32Var(&instConfig.restConfig.QPS, "qps", 10, "Override maximum QPS to the master from this client")
+	installCmd.Flags().IntVar(&instConfig.restConfig.Burst, "burst", 20, "Override maximum burst for throttle")
 	RootCmd.AddCommand(installCmd)
 }
 
@@ -206,17 +209,22 @@ type restClientGetter struct {
 
 var _ genericclioptions.RESTClientGetter = &restClientGetter{}
 
-func newRestClientGetter(context string) (*restClientGetter, error) {
+func newRestClientGetter(context, namespace string, qps float32, burst int) (*restClientGetter, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	overrides := &clientcmd.ConfigOverrides{}
 	if context != "" {
 		overrides.CurrentContext = context
+	}
+	if namespace != "" {
+		overrides.Context.Namespace = namespace
 	}
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("could not get Kubernetes config for context %q: %s", context, err)
 	}
+	restConfig.QPS = qps
+	restConfig.Burst = burst
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("could not get Kubernetes client: %w", err)
@@ -259,8 +267,8 @@ func (d *cachedDiscoveryInterface) Fresh() bool {
 
 func (d *cachedDiscoveryInterface) Invalidate() {}
 
-func getHelmConfig(kctx string, k8sNS string) (*action.Configuration, error) {
-	getter, err := newRestClientGetter(kctx)
+func getHelmConfig(kctx string, k8sNS string, qps float32, burst int) (*action.Configuration, error) {
+	getter, err := newRestClientGetter(kctx, k8sNS, qps, burst)
 	if err != nil {
 		return nil, fmt.Errorf("error getting kube client: %w", err)
 	}
@@ -287,7 +295,7 @@ func install(cmd *cobra.Command, args []string) {
 	if err != nil {
 		clierr("error converting chart definitions: %v", err)
 	}
-	cfg, err := getHelmConfig(instConfig.k8sCtx, instConfig.k8sNS)
+	cfg, err := getHelmConfig(instConfig.k8sCtx, instConfig.k8sNS, instConfig.restConfig.QPS, instConfig.restConfig.Burst)
 	if err != nil {
 		clierr("error getting Helm config: %v", err)
 	}
