@@ -173,7 +173,6 @@ var MaxPodLogLines = uint(500)
 
 // installOrUpgrade does helm installs/upgrades in DAG order
 func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, upgrade bool, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
-	// TODO: Process opts
 	ops := &options{}
 	for _, opt := range opts {
 		opt(ops)
@@ -343,7 +342,7 @@ func (m *Manager) charterror(ctx context.Context, err error, ops *options, c *Ch
 		var release *release.Release
 		if err := ctxFn(ctx, func() error {
 			var err2 error
-			release, err2 = get.Run(ops.releaseNamePrefix + c.Title)
+			release, err2 = get.Run(ReleaseName(ops.releaseNamePrefix + c.Title))
 			if err != nil || release == nil {
 				m.log(fmt.Sprintf("error fetching helm release: %v", err2))
 				return ce
