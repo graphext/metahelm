@@ -273,7 +273,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			upgrade.Timeout = c.WaitTimeout
 			if err := ctxFn(ctx, func() error {
 				if _, err := upgrade.Run(relname, chart, vals); err != nil {
-					return m.charterror(ctx, err, ops, c, "upgrading")
+					return m.charterror(ctx, err, ops, c, relname, "upgrading")
 				}
 				return nil
 			}); err != nil {
@@ -284,7 +284,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				ops.completedCallback(*cmap[obj.Name()], err)
 			}
 			if err != nil {
-				return m.charterror(ctx, err, ops, c, "upgrading")
+				return m.charterror(ctx, err, ops, c, relname, "upgrading")
 			}
 		} else {
 			opstr = "installation"
@@ -299,7 +299,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				var err error
 				release, err = install.Run(chart, vals)
 				if err != nil {
-					return m.charterror(ctx, err, ops, c, "installing")
+					return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
 				}
 				return nil
 			}); err != nil {
@@ -310,7 +310,7 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				ops.completedCallback(*cmap[obj.Name()], err)
 			}
 			if err != nil {
-				return m.charterror(ctx, err, ops, c, "installing")
+				return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
 			}
 			rn.Lock()
 			rn.rmap[c.Title] = release.Name
@@ -335,14 +335,14 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 	return rn.rmap, nil
 }
 
-func (m *Manager) charterror(ctx context.Context, err error, ops *options, c *Chart, operation string) error {
+func (m *Manager) charterror(ctx context.Context, err error, ops *options, c *Chart, releaseName, operation string) error {
 	ce := NewChartError(err)
 	if c.WaitUntilHelmSaysItsReady {
 		get := action.NewGet(m.HCfg)
 		var release *release.Release
 		if err := ctxFn(ctx, func() error {
 			var err2 error
-			release, err2 = get.Run(ReleaseName(ops.releaseNamePrefix + c.Title))
+			release, err2 = get.Run(releaseName)
 			if err != nil || release == nil {
 				m.log(fmt.Sprintf("error fetching helm release: %v", err2))
 				return ce
