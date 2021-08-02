@@ -2,7 +2,6 @@ package metahelm
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -13,7 +12,6 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/kube"
-	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	appsv1 "k8s.io/api/apps/v1"
@@ -439,8 +437,9 @@ func TestValidateCharts(t *testing.T) {
 	}
 }
 
-func TestGraphUpgrade(t *testing.T) {
-	ns := DefaultK8sNamespace
+func TestGraphInstallAndUpgrade(t *testing.T) {
+	ns := "foo"
+	prefix := "metahelm-test-prefix-"
 	fkc := fakeKubernetesClientset(t, ns, testCharts)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
@@ -449,24 +448,54 @@ func TestGraphUpgrade(t *testing.T) {
 		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
-	um := ReleaseMap{}
-	for i, c := range testCharts {
-		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
-		um[c.Title] = rn
-		cfg.Releases.Create(&release.Release{
-			Name:      rn,
-			Namespace: ns,
-			Info:      &release.Info{},
-		})
-	}
-	err := m.Upgrade(context.Background(), um, testCharts)
+	um, err := m.Install(context.Background(), testCharts, WithK8sNamespace(ns), WithReleaseNamePrefix(prefix))
 	if err != nil {
 		t.Fatalf("error upgrading: %v", err)
 	}
+	lr, err := m.HCfg.Releases.ListReleases()
+	if err != nil {
+		t.Fatalf("error listing releases: %v", err)
+	}
+	count := 0
+	for _, r := range lr {
+		if r.Namespace != ns {
+			t.Fatalf("error incorrect namespace on install; expected: %v, got: %v", ns, r.Namespace)
+		}
+		if r.Version != 1 {
+			t.Fatalf("error incorrect version on install; expected: v1, got: v%v", r.Version)
+		}
+		t.Logf("installed: %v, v%v", r.Name, r.Version)
+		count += 1
+	}
+	if count != len(um) {
+		t.Fatalf("error incorrect number of releases upgraded; expected: %v, got: %v", len(um), count)
+	}
+	err = m.Upgrade(context.Background(), um, testCharts, WithK8sNamespace(ns), WithReleaseNamePrefix(prefix))
+	if err != nil {
+		t.Fatalf("error upgrading: %v", err)
+	}
+	lr, err = m.HCfg.Releases.ListReleases()
+	if err != nil {
+		t.Fatalf("error listing releases: %v", err)
+	}
+	count = 0
+	for _, r := range lr {
+		if r.Version == 2 {
+			if r.Namespace != ns {
+				t.Fatalf("error incorrect namespace on upgrade; expected: %v, got: %v", ns, r.Namespace)
+			}
+			t.Logf("upgraded: %v, v%v", r.Name, r.Version)
+			count += 1
+		}
+	}
+	if count != len(um) {
+		t.Fatalf("error incorrect number of releases upgraded; expected: %v, got: %v", len(um), count)
+	}
 }
 
-func TestGraphUpgradeMissingRelease(t *testing.T) {
-	ns := DefaultK8sNamespace
+func TestGraphInstallAndUpgradeMissingRelease(t *testing.T) {
+	ns := "foo"
+	prefix := "metahelm-test-prefix-"
 	fkc := fakeKubernetesClientset(t, ns, testCharts)
 	cfg := fakeHelmConfiguration(t)
 	m := Manager{
@@ -475,21 +504,38 @@ func TestGraphUpgradeMissingRelease(t *testing.T) {
 		HCfg: cfg,
 	}
 	ChartWaitPollInterval = 1 * time.Second
-	um := ReleaseMap{}
-	for i, c := range testCharts {
-		rn := fmt.Sprintf("release-%v-%v", c.Title, i)
-		um[c.Title] = rn
-		cfg.Releases.Create(&release.Release{
-			Name:      rn,
-			Namespace: ns,
-			Info:      &release.Info{},
-		})
+	um, err := m.Install(context.Background(), testCharts, WithK8sNamespace(ns), WithReleaseNamePrefix(prefix))
+	if err != nil {
+		t.Fatalf("error upgrading: %v", err)
+	}
+	lr, err := m.HCfg.Releases.ListReleases()
+	if err != nil {
+		t.Fatalf("error listing releases: %v", err)
+	}
+	for _, r := range lr {
+		found := false
+		for _, v := range um {
+			if v == r.Name {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("error release not found on upgrade: %v", r.Name)
+		}
+		if r.Namespace != ns {
+			t.Fatalf("error incorrect namespace on upgrade; expected: %v, got: %v", ns, r.Namespace)
+		}
+		if r.Version != 1 {
+			t.Fatalf("error incorrect version on install; expected: v1, got: v%v", r.Version)
+		}
+		t.Logf("installed: %v, v%v", r.Name, r.Version)
 	}
 	delete(um, testCharts[0].Title)
-	err := m.Upgrade(context.Background(), um, testCharts)
+	err = m.Upgrade(context.Background(), um, testCharts, WithK8sNamespace(ns), WithReleaseNamePrefix(prefix))
 	if err == nil {
 		t.Fatalf("should have failed")
 	}
+	t.Logf("error: %v", err)
 }
 
 func TestReleaseName(t *testing.T) {
