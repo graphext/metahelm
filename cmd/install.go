@@ -15,12 +15,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
+	"helm.sh/helm/v3/pkg/action"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/helm/pkg/helm"
-	"k8s.io/helm/pkg/helm/portforwarder"
-	"k8s.io/helm/pkg/kube"
 )
 
 // ChartDefinition models a chart in the YAML input file
@@ -50,6 +52,7 @@ type installCfg struct {
 	k8sCtx            string
 	k8sNS             string
 	releaseNamePrefix string
+	restConfig        rest.Config
 }
 
 var instConfig installCfg
@@ -69,6 +72,8 @@ func init() {
 	installCmd.Flags().StringVar(&instConfig.k8sNS, "k8s-namespace", "", "k8s namespace into which to install charts")
 	installCmd.Flags().StringVar(&instConfig.k8sCtx, "k8s-ctx", "", "k8s context")
 	installCmd.Flags().StringVar(&instConfig.releaseNamePrefix, "release-name-prefix", "", "Release name prefix")
+	installCmd.Flags().Float32Var(&instConfig.restConfig.QPS, "qps", 50, "Override maximum QPS to the master from this client")
+	installCmd.Flags().IntVar(&instConfig.restConfig.Burst, "burst", 100, "Override maximum burst for throttle")
 	RootCmd.AddCommand(installCmd)
 }
 
@@ -195,42 +200,86 @@ func cd2c(cds []ChartDefinition) ([]metahelm.Chart, error) {
 	return cs, nil
 }
 
-// getK8sConfig returns a Kubernetes client config for a given context.
-func getK8sConfig(context string) clientcmd.ClientConfig {
+type restClientGetter struct {
+	restConfig          *rest.Config
+	discoveryClient     discovery.CachedDiscoveryInterface
+	restMapper          meta.RESTMapper
+	rawKubeConfigLoader clientcmd.ClientConfig
+}
+
+var _ genericclioptions.RESTClientGetter = &restClientGetter{}
+
+func newRestClientGetter(context, namespace string, qps float32, burst int) (*restClientGetter, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	overrides := &clientcmd.ConfigOverrides{}
 	if context != "" {
 		overrides.CurrentContext = context
 	}
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	if namespace != "" {
+		overrides.Context.Namespace = namespace
+	}
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("could not get Kubernetes config for context %q: %s", context, err)
+	}
+	restConfig.QPS = qps
+	restConfig.Burst = burst
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not get Kubernetes client: %w", err)
+	}
+	discoveryClient := &cachedDiscoveryInterface{clientset.DiscoveryClient}
+	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
+	return &restClientGetter{
+		restConfig:          restConfig,
+		discoveryClient:     discoveryClient,
+		restMapper:          restMapper,
+		rawKubeConfigLoader: clientConfig,
+	}, nil
 }
 
-// getKubeClient creates a Kubernetes config and client for a given kubeconfig context.
-func getKubeClient(context string) (*rest.Config, kubernetes.Interface, error) {
-	config, err := getK8sConfig(context).ClientConfig()
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not get Kubernetes config for context %q: %s", context, err)
-	}
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not get Kubernetes client: %s", err)
-	}
-	return config, client, nil
+func (g *restClientGetter) ToRESTConfig() (*rest.Config, error) {
+	return g.restConfig, nil
 }
 
-func getClients(kctx string) (*kube.Tunnel, kubernetes.Interface, *helm.Client, error) {
-	config, client, err := getKubeClient(kctx)
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "error getting kube client")
-	}
+func (g *restClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
+	return g.discoveryClient, nil
+}
 
-	tunnel, err := portforwarder.New(instConfig.tillerNS, client, config)
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "error establishing k8s tunnel")
-	}
-	tillerHost := fmt.Sprintf("127.0.0.1:%d", tunnel.Local)
+func (g *restClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
+	return g.restMapper, nil
+}
 
-	return tunnel, client, helm.NewClient(helm.Host(tillerHost), helm.ConnectTimeout(int64(instConfig.tillerTimeout.Seconds()))), nil
+func (g *restClientGetter) ToRawKubeConfigLoader() clientcmd.ClientConfig {
+	return g.rawKubeConfigLoader
+}
+
+type cachedDiscoveryInterface struct {
+	discovery.DiscoveryInterface
+}
+
+var _ discovery.CachedDiscoveryInterface = &cachedDiscoveryInterface{}
+
+func (d *cachedDiscoveryInterface) Fresh() bool {
+	return false
+}
+
+func (d *cachedDiscoveryInterface) Invalidate() {}
+
+func getHelmConfig(kctx string, k8sNS string, qps float32, burst int) (*action.Configuration, error) {
+	getter, err := newRestClientGetter(kctx, k8sNS, qps, burst)
+	if err != nil {
+		return nil, fmt.Errorf("error getting kube client: %w", err)
+	}
+	helmDriver := os.Getenv("HELM_DRIVER")
+	cfg := &action.Configuration{}
+	if err := cfg.Init(getter, k8sNS, helmDriver, func(format string, v ...interface{}) {
+		log.Printf(format, v)
+	}); err != nil {
+		return nil, fmt.Errorf("error initializing Helm config: %w", err)
+	}
+	return cfg, nil
 }
 
 func install(cmd *cobra.Command, args []string) {
@@ -246,14 +295,14 @@ func install(cmd *cobra.Command, args []string) {
 	if err != nil {
 		clierr("error converting chart definitions: %v", err)
 	}
-	tunnel, kc, hc, err := getClients(instConfig.k8sCtx)
+	cfg, err := getHelmConfig(instConfig.k8sCtx, instConfig.k8sNS, instConfig.restConfig.QPS, instConfig.restConfig.Burst)
 	if err != nil {
-		clierr("error getting kube and helm clients: %v", err)
+		clierr("error getting Helm config: %v", err)
 	}
-	defer tunnel.Close()
+	clientset, err := cfg.KubernetesClientSet()
 	m := metahelm.Manager{
-		HC:   hc,
-		K8c:  kc,
+		HCfg: cfg,
+		K8c:  clientset,
 		LogF: log.Printf,
 	}
 	var rm metahelm.ReleaseMap
@@ -289,9 +338,6 @@ func buildReleaseMap(instConfig installCfg, cs []metahelm.Chart) metahelm.Releas
 
 func (instConfig *installCfg) ToInstallOptions() []metahelm.InstallOption {
 	var options []metahelm.InstallOption
-	if instConfig.tillerNS != "" {
-		options = append(options, metahelm.WithTillerNamespace(instConfig.tillerNS))
-	}
 	if instConfig.k8sNS != "" {
 		options = append(options, metahelm.WithK8sNamespace(instConfig.k8sNS))
 	}
