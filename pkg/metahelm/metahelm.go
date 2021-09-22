@@ -30,19 +30,6 @@ type K8sClient interface {
 	BatchV1() batchv1.BatchV1Interface
 }
 
-func ctxFn(ctx context.Context, fn func() error) error {
-	errc := make(chan error, 1)
-	go func() {
-		errc <- fn()
-	}()
-	select {
-	case <-ctx.Done():
-		return errors.New("context was cancelled")
-	case err := <-errc:
-		return err
-	}
-}
-
 // LogFunc is a function that logs a formatted string somewhere
 type LogFunc func(string, ...interface{})
 
@@ -271,13 +258,8 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			upgrade := action.NewUpgrade(m.HCfg)
 			upgrade.Wait = true
 			upgrade.Timeout = c.WaitTimeout
-			if err := ctxFn(ctx, func() error {
-				if _, err := upgrade.Run(relname, chart, vals); err != nil {
-					return m.charterror(ctx, err, ops, c, relname, "upgrading")
-				}
-				return nil
-			}); err != nil {
-				return err
+			if _, err := upgrade.RunWithContext(ctx, relname, chart, vals); err != nil {
+				return m.charterror(ctx, err, ops, c, relname, "upgrading")
 			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
@@ -295,15 +277,9 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			install.Namespace = ops.k8sNamespace
 			install.Timeout = c.WaitTimeout
 			var release *release.Release
-			if err := ctxFn(ctx, func() error {
-				var err error
-				release, err = install.Run(chart, vals)
-				if err != nil {
-					return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
-				}
-				return nil
-			}); err != nil {
-				return err
+			release, err = install.RunWithContext(ctx, chart, vals)
+			if err != nil {
+				return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
 			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
@@ -339,19 +315,12 @@ func (m *Manager) charterror(ctx context.Context, err error, ops *options, c *Ch
 	ce := NewChartError(err)
 	if c.WaitUntilHelmSaysItsReady {
 		get := action.NewGet(m.HCfg)
-		var release *release.Release
-		if err := ctxFn(ctx, func() error {
-			var err2 error
-			release, err2 = get.Run(releaseName)
-			if err != nil || release == nil {
-				m.log(fmt.Sprintf("error fetching helm release: %v", err2))
-				return ce
-			}
-			return nil
-		}); err != nil {
-			return err
+		rel, err2 := get.Run(releaseName)
+		if err2 != nil || rel == nil {
+			m.log(fmt.Sprintf("error fetching helm release: %v", err2))
+			return ce
 		}
-		if err2 := ce.PopulateFromRelease(ctx, release, m.K8c, MaxPodLogLines); err2 != nil {
+		if err2 := ce.PopulateFromRelease(ctx, rel, m.K8c, MaxPodLogLines); err2 != nil {
 			m.log("error populating chart error from release: %v", err2)
 			return errors.Wrap(err, "error "+operation+" chart")
 		}
@@ -399,16 +368,9 @@ func releaseExists(ctx context.Context, cfg *action.Configuration, namespace str
 	list := action.NewList(cfg)
 	list.AllNamespaces = true
 	list.Filter = fmt.Sprintf("^%s$", regexp.QuoteMeta(releaseName))
-	var releases []*release.Release
-	if err := ctxFn(ctx, func() error {
-		var err error
-		releases, err = list.Run()
-		if err != nil {
-			return fmt.Errorf("error getting release name: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return false, err
+	releases, err := list.Run()
+	if err != nil {
+		return false, fmt.Errorf("error getting release name: %w", err)
 	}
 	for _, release := range releases {
 		if release.Namespace == namespace {
