@@ -166,8 +166,6 @@ func wrapper(ctx context.Context, fn func() error) error {
 	}()
 	select {
 	case <-ctx.Done():
-		// wait a brief period to allow fn to return
-		time.Sleep(10*time.Millisecond)
 		return fmt.Errorf("function wrapper: context was cancelled")
 	case err := <-errc:
 		return err
