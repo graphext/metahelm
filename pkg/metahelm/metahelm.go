@@ -158,6 +158,20 @@ func ReleaseName(input string) string {
 // MaxPodLogLines is the maximum number of failed pod log lines to return in the event of chart install/upgrade failure
 var MaxPodLogLines = uint(500)
 
+// wrapper allows us to force cancellation around a long-running function that doesn't support contexts, or doesn't support them well enough
+func wrapper(ctx context.Context, fn func() error) error {
+	errc := make(chan error, 1)
+	go func() {
+		errc <- fn()
+	}()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("function wrapper: context was cancelled")
+	case err := <-errc:
+		return err
+	}
+}
+
 // installOrUpgrade does helm installs/upgrades in DAG order
 func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, upgrade bool, charts []Chart, opts ...InstallOption) (ReleaseMap, error) {
 	ops := &options{}
@@ -258,8 +272,14 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			upgrade := action.NewUpgrade(m.HCfg)
 			upgrade.Wait = true
 			upgrade.Timeout = c.WaitTimeout
-			if _, err := upgrade.RunWithContext(ctx, relname, chart, vals); err != nil {
-				return m.charterror(ctx, err, ops, c, relname, "upgrading")
+			fn := func() error {
+				if _, err := upgrade.RunWithContext(ctx, relname, chart, vals); err != nil {
+					return m.charterror(ctx, err, ops, c, relname, "upgrading")
+				}
+				return nil
+			}
+			if err := wrapper(ctx, fn); err != nil {
+				return err
 			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
@@ -277,9 +297,15 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			install.Namespace = ops.k8sNamespace
 			install.Timeout = c.WaitTimeout
 			var release *release.Release
-			release, err = install.RunWithContext(ctx, chart, vals)
-			if err != nil {
-				return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
+			fn := func() error {
+				release, err = install.RunWithContext(ctx, chart, vals)
+				if err != nil {
+					return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
+				}
+				return nil
+			}
+			if err := wrapper(ctx, fn); err != nil {
+				return err
 			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
