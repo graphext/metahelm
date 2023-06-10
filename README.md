@@ -1,4 +1,4 @@
-[![GoDoc](https://godoc.org/github.com/dollarshaveclub/metahelm/pkg/metahelm?status.svg)](http://godoc.org/github.com/dollarshaveclub/metahelm/pkg/metahelm)
+[![GoDoc](https://godoc.org/github.com/graphext/metahelm/pkg/metahelm?status.svg)](http://godoc.org/github.com/graphext/metahelm/pkg/metahelm)
 [![CircleCI](https://circleci.com/gh/dollarshaveclub/metahelm.svg?style=shield&circle-token=f906b4f6996b06331f7872e99bd2eb8d26bee537)](https://circleci.com/gh/dollarshaveclub/metahelm)
 
 # Metahelm

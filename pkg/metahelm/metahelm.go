@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dollarshaveclub/metahelm/pkg/dag"
+	"github.com/graphext/metahelm/pkg/dag"
 	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"

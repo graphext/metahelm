@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/dollarshaveclub/metahelm/pkg/manifest"
+	"github.com/graphext/metahelm/pkg/manifest"
 	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"

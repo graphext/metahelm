@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
+	"github.com/graphext/metahelm/pkg/metahelm"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"

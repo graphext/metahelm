@@ -3,7 +3,6 @@ module github.com/graphext/metahelm
 go 1.19
 
 require (
-	github.com/dollarshaveclub/metahelm v0.7.2
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.6.1
 	golang.org/x/sync v0.1.0
@@ -51,7 +50,6 @@ require (
 	github.com/go-openapi/jsonreference v0.20.1 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.0.1 // indirect

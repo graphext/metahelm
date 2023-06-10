@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/dollarshaveclub/metahelm/pkg/dag"
+	"github.com/graphext/metahelm/pkg/dag"
 	"github.com/spf13/cobra"
 )
 

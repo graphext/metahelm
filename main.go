@@ -1,6 +1,6 @@
 package main
 
-import "github.com/dollarshaveclub/metahelm/cmd"
+import "github.com/graphext/metahelm/cmd"
 
 func main() {
 	cmd.RootCmd.Execute()
