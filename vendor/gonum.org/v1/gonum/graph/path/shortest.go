@@ -420,67 +420,38 @@ func (p ShortestAlts) AllTo(vid int64) (paths [][]graph.Node, weight float64) {
 	}
 
 	seen := make([]bool, len(p.nodes))
-	p.allTo(from, to, seen, []graph.Node{p.nodes[to]}, func(path []graph.Node) {
-		paths = append(paths, append([]graph.Node(nil), path...))
-	})
+	paths = p.allTo(from, to, seen, []graph.Node{p.nodes[to]}, nil)
 	weight = p.dist[to]
 
 	return paths, weight
 }
 
-// AllToFunc calls fn on all shortest paths to v. Paths containing zero-weight
-// cycles are not considered. If a negative cycle exists between u and v, no
-// path is considered. The fn closure must not retain the path parameter.
-func (p ShortestAlts) AllToFunc(vid int64, fn func(path []graph.Node)) {
-	from := p.indexOf[p.from.ID()]
-	to, toOK := p.indexOf[vid]
-	if !toOK || len(p.next[to]) == 0 {
-		if p.from.ID() == vid {
-			fn([]graph.Node{p.nodes[from]})
-		}
-		return
-	}
-
-	_, weight, unique := p.To(vid)
-	if math.IsInf(weight, -1) && !unique {
-		return
-	}
-
-	seen := make([]bool, len(p.nodes))
-	p.allTo(from, to, seen, []graph.Node{p.nodes[to]}, fn)
-}
-
 // allTo recursively constructs a slice of paths extending from the node
 // indexed into p.nodes by from to the node indexed by to. len(seen) must match
 // the number of nodes held by the receiver. The path parameter is the current
-// working path and the results passed to fn.
-func (p ShortestAlts) allTo(from, to int, seen []bool, path []graph.Node, fn func(path []graph.Node)) {
+// working path and the results are written into paths.
+func (p ShortestAlts) allTo(from, to int, seen []bool, path []graph.Node, paths [][]graph.Node) [][]graph.Node {
 	seen[to] = true
 	if from == to {
 		if path == nil {
-			return
+			return paths
 		}
 		ordered.Reverse(path)
-		fn(path)
-		ordered.Reverse(path)
-		return
+		return append(paths, path)
 	}
 	first := true
-	var seenWork []bool
 	for _, to := range p.next[to] {
 		if seen[to] {
 			continue
 		}
 		if first {
-			p := make([]graph.Node, len(path), len(path)+1)
-			copy(p, path)
-			path = p
-			seenWork = make([]bool, len(seen))
+			path = append([]graph.Node(nil), path...)
 			first = false
 		}
-		copy(seenWork, seen)
-		p.allTo(from, to, seenWork, append(path, p.nodes[to]), fn)
+		path = path[:len(path):len(path)]
+		paths = p.allTo(from, to, append([]bool(nil), seen...), append(path, p.nodes[to]), paths)
 	}
+	return paths
 }
 
 // negEdge is a key into the negative costs map used by Shortest and ShortestAlts.
@@ -710,51 +681,16 @@ func (p AllShortest) AllBetween(uid, vid int64) (paths [][]graph.Node, weight fl
 		n = p.nodes[to]
 	}
 	seen := make([]bool, len(p.nodes))
-	p.allBetween(from, to, seen, []graph.Node{n}, func(path []graph.Node) {
-		paths = append(paths, append([]graph.Node(nil), path...))
-	})
+	paths = p.allBetween(from, to, seen, []graph.Node{n}, nil)
 
 	return paths, weight
 }
 
-// AllBetweenFunc calls fn on all shortest paths from u to v. Paths containing
-// zero-weight cycles are not considered. If a negative cycle exists between u
-// and v, no path is considered. The fn closure must not retain the path
-// parameter.
-func (p AllShortest) AllBetweenFunc(uid, vid int64, fn func(path []graph.Node)) {
-	from, fromOK := p.indexOf[uid]
-	to, toOK := p.indexOf[vid]
-	if !fromOK || !toOK || len(p.at(from, to)) == 0 {
-		if uid == vid {
-			if !fromOK {
-				fn([]graph.Node{node(uid)})
-				return
-			}
-			fn([]graph.Node{p.nodes[from]})
-			return
-		}
-		return
-	}
-
-	if math.Float64bits(p.dist.At(from, to)) == defacedBits {
-		return
-	}
-
-	var n graph.Node
-	if p.forward {
-		n = p.nodes[from]
-	} else {
-		n = p.nodes[to]
-	}
-	seen := make([]bool, len(p.nodes))
-	p.allBetween(from, to, seen, []graph.Node{n}, fn)
-}
-
-// allBetween recursively constructs a set of paths extending from the node
+// allBetween recursively constructs a slice of paths extending from the node
 // indexed into p.nodes by from to the node indexed by to. len(seen) must match
 // the number of nodes held by the receiver. The path parameter is the current
-// working path and the results passed to fn.
-func (p AllShortest) allBetween(from, to int, seen []bool, path []graph.Node, fn func([]graph.Node)) {
+// working path and the results are written into paths.
+func (p AllShortest) allBetween(from, to int, seen []bool, path []graph.Node, paths [][]graph.Node) [][]graph.Node {
 	if p.forward {
 		seen[from] = true
 	} else {
@@ -762,28 +698,20 @@ func (p AllShortest) allBetween(from, to int, seen []bool, path []graph.Node, fn
 	}
 	if from == to {
 		if path == nil {
-			return
+			return paths
 		}
 		if !p.forward {
 			ordered.Reverse(path)
 		}
-		fn(path)
-		if !p.forward {
-			ordered.Reverse(path)
-		}
-		return
+		return append(paths, path)
 	}
 	first := true
-	var seenWork []bool
 	for _, n := range p.at(from, to) {
 		if seen[n] {
 			continue
 		}
 		if first {
-			p := make([]graph.Node, len(path), len(path)+1)
-			copy(p, path)
-			path = p
-			seenWork = make([]bool, len(seen))
+			path = append([]graph.Node(nil), path...)
 			first = false
 		}
 		if p.forward {
@@ -791,9 +719,10 @@ func (p AllShortest) allBetween(from, to int, seen []bool, path []graph.Node, fn
 		} else {
 			to = n
 		}
-		copy(seenWork, seen)
-		p.allBetween(from, to, seenWork, append(path, p.nodes[n]), fn)
+		path = path[:len(path):len(path)]
+		paths = p.allBetween(from, to, append([]bool(nil), seen...), append(path, p.nodes[n]), paths)
 	}
+	return paths
 }
 
 type node int64

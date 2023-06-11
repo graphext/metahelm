@@ -6,7 +6,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !safe
 // +build !safe
 
 package iterator
@@ -19,81 +18,40 @@ import (
 
 // A mapIter is an iterator for ranging over a map.
 type mapIter struct {
-	m     *emptyInterface
-	hiter hiter
+	m  *emptyInterface
+	it unsafe.Pointer
 }
 
 type emptyInterface struct {
 	typ, word unsafe.Pointer
 }
 
-// hiter's structure matches runtime.hiter's structure.
-// Having a clone here allows us to embed a map iterator
-// inside type mapIter so that mapIters can be re-used
-// without doing any allocations.
-//
-//lint:ignore U1000 This is a verbatim copy of the runtime type.
-type hiter struct {
-	key         unsafe.Pointer
-	elem        unsafe.Pointer
-	t           unsafe.Pointer
-	h           unsafe.Pointer
-	buckets     unsafe.Pointer
-	bptr        unsafe.Pointer
-	overflow    *[]unsafe.Pointer
-	oldoverflow *[]unsafe.Pointer
-	startBucket uintptr
-	offset      uint8
-	wrapped     bool
-	B           uint8
-	i           uint8
-	bucket      uintptr
-	checkBucket uintptr
-}
-
-func (h *hiter) initialized() bool {
-	return h.t != nil
-}
-
 // newMapIterNodes returns a range iterator for a map of nodes.
-// The returned mapIter must not have its line or weightedLine methods called.
 func newMapIterNodes(m map[int64]graph.Node) *mapIter {
 	return &mapIter{m: eface(m)}
 }
 
 // newMapIterEdges returns a range iterator for a map of edges.
-// The returned mapIter must not have its node, line or weightedLine methods called.
+// The returned mapIter must not have its node method called.
 func newMapIterEdges(m map[int64]graph.Edge) *mapIter {
 	return &mapIter{m: eface(m)}
 }
 
-// newMapIterLines returns a range iterator for a map of line.
-// The returned mapIter must not have its node or weightedLine method called.
-func newMapIterLines(m map[int64]graph.Line) *mapIter {
+// newMapIterWeightedEdges returns a range iterator for a map of edges.
+// The returned mapIter must not have its node method called.
+func newMapIterWeightedEdges(m map[int64]graph.WeightedEdge) *mapIter {
 	return &mapIter{m: eface(m)}
 }
 
-// newMapIterWeightedLines returns a range iterator for a map of line.
-// The returned mapIter must not have its node, line or weightedLine methods called.
-func newMapIterWeightedLines(m map[int64]graph.WeightedLine) *mapIter {
+// newMapIterLines returns a range iterator for a map of edges.
+// The returned mapIter must not have its node method called.
+func newMapIterLines(m map[int64]map[int64]graph.Line) *mapIter {
 	return &mapIter{m: eface(m)}
 }
 
-// newMapIterByWeightedEdges returns a range iterator for a map of edges.
-// The returned mapIter must not have its node, line or weightedLine methods called.
-func newMapIterByWeightedEdges(m map[int64]graph.WeightedEdge) *mapIter {
-	return &mapIter{m: eface(m)}
-}
-
-// newMapIterByLines returns a range iterator for a map of edges.
-// The returned mapIter must not have its node, line or weightedLine methods called.
-func newMapIterByLines(m map[int64]map[int64]graph.Line) *mapIter {
-	return &mapIter{m: eface(m)}
-}
-
-// newMapIterByWeightedLines returns a range iterator for a map of edges.
-// The returned mapIter must not have its node, line or weightedLine methods called.
-func newMapIterByWeightedLines(m map[int64]map[int64]graph.WeightedLine) *mapIter {
+// newMapIterWeightedLines returns a range iterator for a map of edges.
+// The returned mapIter must not have its node method called.
+func newMapIterWeightedLines(m map[int64]map[int64]graph.WeightedLine) *mapIter {
 	return &mapIter{m: eface(m)}
 }
 
@@ -103,75 +61,55 @@ func eface(i interface{}) *emptyInterface {
 
 // id returns the key of the iterator's current map entry.
 func (it *mapIter) id() int64 {
-	if !it.hiter.initialized() {
+	if it.it == nil {
 		panic("mapIter.id called before Next")
 	}
-	if mapiterkey(&it.hiter) == nil {
+	if mapiterkey(it.it) == nil {
 		panic("mapIter.id called on exhausted iterator")
 	}
-	return *(*int64)(mapiterkey(&it.hiter))
+	return *(*int64)(mapiterkey(it.it))
 }
 
 // node returns the value of the iterator's current map entry.
 func (it *mapIter) node() graph.Node {
-	if !it.hiter.initialized() {
+	if it.it == nil {
 		panic("mapIter.node called before next")
 	}
-	if mapiterkey(&it.hiter) == nil {
+	if mapiterkey(it.it) == nil {
 		panic("mapIter.node called on exhausted iterator")
 	}
-	return *(*graph.Node)(mapiterelem(&it.hiter))
-}
-
-// line returns the value of the iterator's current map entry.
-func (it *mapIter) line() graph.Line {
-	if !it.hiter.initialized() {
-		panic("mapIter.line called before next")
-	}
-	if mapiterkey(&it.hiter) == nil {
-		panic("mapIter.line called on exhausted iterator")
-	}
-	return *(*graph.Line)(mapiterelem(&it.hiter))
-}
-
-// weightedLine returns the value of the iterator's current map entry.
-func (it *mapIter) weightedLine() graph.WeightedLine {
-	if !it.hiter.initialized() {
-		panic("mapIter.weightedLine called before next")
-	}
-	if mapiterkey(&it.hiter) == nil {
-		panic("mapIter.weightedLine called on exhausted iterator")
-	}
-	return *(*graph.WeightedLine)(mapiterelem(&it.hiter))
+	return *(*graph.Node)(mapiterelem(it.it))
 }
 
 // next advances the map iterator and reports whether there is another
 // entry. It returns false when the iterator is exhausted; subsequent
 // calls to Key, Value, or next will panic.
 func (it *mapIter) next() bool {
-	if !it.hiter.initialized() {
-		mapiterinit(it.m.typ, it.m.word, &it.hiter)
+	if it.it == nil {
+		it.it = mapiterinit(it.m.typ, it.m.word)
 	} else {
-		if mapiterkey(&it.hiter) == nil {
+		if mapiterkey(it.it) == nil {
 			panic("mapIter.next called on exhausted iterator")
 		}
-		mapiternext(&it.hiter)
+		mapiternext(it.it)
 	}
-	return mapiterkey(&it.hiter) != nil
+	return mapiterkey(it.it) != nil
 }
 
-//go:linkname mapiterinit runtime.mapiterinit
+// m escapes into the return value, but the caller of mapiterinit
+// doesn't let the return value escape.
+//go:linkname mapiterinit reflect.mapiterinit
 //go:noescape
-func mapiterinit(t, m unsafe.Pointer, it *hiter)
+func mapiterinit(t, m unsafe.Pointer) unsafe.Pointer
 
 //go:linkname mapiterkey reflect.mapiterkey
 //go:noescape
-func mapiterkey(it *hiter) (key unsafe.Pointer)
+func mapiterkey(it unsafe.Pointer) (key unsafe.Pointer)
 
 //go:linkname mapiterelem reflect.mapiterelem
 //go:noescape
-func mapiterelem(it *hiter) (elem unsafe.Pointer)
+func mapiterelem(it unsafe.Pointer) (elem unsafe.Pointer)
 
 //go:linkname mapiternext reflect.mapiternext
 //go:noescape
-func mapiternext(it *hiter)
+func mapiternext(it unsafe.Pointer)

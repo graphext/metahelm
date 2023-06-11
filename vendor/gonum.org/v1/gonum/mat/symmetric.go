@@ -9,8 +9,6 @@ import (
 
 	"gonum.org/v1/gonum/blas"
 	"gonum.org/v1/gonum/blas/blas64"
-	"gonum.org/v1/gonum/lapack"
-	"gonum.org/v1/gonum/lapack/lapack64"
 )
 
 var (
@@ -37,8 +35,8 @@ type SymDense struct {
 // the element at {j, i}). Symmetric matrices are always square.
 type Symmetric interface {
 	Matrix
-	// SymmetricDim returns the number of rows/columns in the matrix.
-	SymmetricDim() int
+	// Symmetric returns the number of rows/columns in the matrix.
+	Symmetric() int
 }
 
 // A RawSymmetricer can return a view of itself as a BLAS Symmetric matrix.
@@ -100,9 +98,9 @@ func (s *SymDense) T() Matrix {
 	return s
 }
 
-// SymmetricDim implements the Symmetric interface and returns the number of rows
+// Symmetric implements the Symmetric interface and returns the number of rows
 // and columns in the matrix.
-func (s *SymDense) SymmetricDim() int {
+func (s *SymDense) Symmetric() int {
 	return s.mat.N
 }
 
@@ -234,14 +232,14 @@ func (s *SymDense) reuseAsZeroed(n int) {
 }
 
 func (s *SymDense) isolatedWorkspace(a Symmetric) (w *SymDense, restore func()) {
-	n := a.SymmetricDim()
+	n := a.Symmetric()
 	if n == 0 {
 		panic(ErrZeroLength)
 	}
-	w = getSymDenseWorkspace(n, false)
+	w = getWorkspaceSym(n, false)
 	return w, func() {
 		s.CopySym(w)
-		putSymDenseWorkspace(w)
+		putWorkspaceSym(w)
 	}
 }
 
@@ -258,8 +256,8 @@ func (s *SymDense) DiagView() Diagonal {
 }
 
 func (s *SymDense) AddSym(a, b Symmetric) {
-	n := a.SymmetricDim()
-	if n != b.SymmetricDim() {
+	n := a.Symmetric()
+	if n != b.Symmetric() {
 		panic(ErrShape)
 	}
 	s.reuseAsNonZeroed(n)
@@ -295,7 +293,7 @@ func (s *SymDense) AddSym(a, b Symmetric) {
 }
 
 func (s *SymDense) CopySym(a Symmetric) int {
-	n := a.SymmetricDim()
+	n := a.Symmetric()
 	n = min(n, s.mat.N)
 	if n == 0 {
 		return 0
@@ -322,11 +320,10 @@ func (s *SymDense) CopySym(a Symmetric) int {
 
 // SymRankOne performs a symmetric rank-one update to the matrix a with x,
 // which is treated as a column vector, and stores the result in the receiver
-//
-//	s = a + alpha * x * xᵀ
+//  s = a + alpha * x * xᵀ
 func (s *SymDense) SymRankOne(a Symmetric, alpha float64, x Vector) {
 	n := x.Len()
-	if a.SymmetricDim() != n {
+	if a.Symmetric() != n {
 		panic(ErrShape)
 	}
 	s.reuseAsNonZeroed(n)
@@ -356,10 +353,9 @@ func (s *SymDense) SymRankOne(a Symmetric, alpha float64, x Vector) {
 
 // SymRankK performs a symmetric rank-k update to the matrix a and stores the
 // result into the receiver. If a is zero, see SymOuterK.
-//
-//	s = a + alpha * x * x'
+//  s = a + alpha * x * x'
 func (s *SymDense) SymRankK(a Symmetric, alpha float64, x Matrix) {
-	n := a.SymmetricDim()
+	n := a.Symmetric()
 	r, _ := x.Dims()
 	if r != n {
 		panic(ErrShape)
@@ -389,9 +385,7 @@ func (s *SymDense) SymRankK(a Symmetric, alpha float64, x Matrix) {
 // SymOuterK calculates the outer product of x with itself and stores
 // the result into the receiver. It is equivalent to the matrix
 // multiplication
-//
-//	s = alpha * x * x'.
-//
+//  s = alpha * x * x'.
 // In order to update an existing matrix, see SymRankOne.
 func (s *SymDense) SymOuterK(alpha float64, x Matrix) {
 	n, _ := x.Dims()
@@ -409,10 +403,10 @@ func (s *SymDense) SymOuterK(alpha float64, x Matrix) {
 		panic(badSymTriangle)
 	case s.mat.N == n:
 		if s == x {
-			w := getSymDenseWorkspace(n, true)
+			w := getWorkspaceSym(n, true)
 			w.SymRankK(w, alpha, x)
 			s.CopySym(w)
-			putSymDenseWorkspace(w)
+			putWorkspaceSym(w)
 		} else {
 			switch r := x.(type) {
 			case RawMatrixer:
@@ -437,8 +431,7 @@ func (s *SymDense) SymOuterK(alpha float64, x Matrix) {
 // RankTwo performs a symmetric rank-two update to the matrix a with the
 // vectors x and y, which are treated as column vectors, and stores the
 // result in the receiver
-//
-//	m = a + alpha * (x * yᵀ + y * xᵀ)
+//  m = a + alpha * (x * yᵀ + y * xᵀ)
 func (s *SymDense) RankTwo(a Symmetric, alpha float64, x, y Vector) {
 	n := s.mat.N
 	if x.Len() != n {
@@ -500,7 +493,7 @@ func (s *SymDense) RankTwo(a Symmetric, alpha float64, x, y Vector) {
 
 // ScaleSym multiplies the elements of a by f, placing the result in the receiver.
 func (s *SymDense) ScaleSym(f float64, a Symmetric) {
-	n := a.SymmetricDim()
+	n := a.Symmetric()
 	s.reuseAsNonZeroed(n)
 	if a, ok := a.(RawSymmetricer); ok {
 		amat := a.RawSymmetric()
@@ -528,7 +521,7 @@ func (s *SymDense) ScaleSym(f float64, a Symmetric) {
 // have to be a strict subset, dimension repeats are allowed.
 func (s *SymDense) SubsetSym(a Symmetric, set []int) {
 	n := len(set)
-	na := a.SymmetricDim()
+	na := a.Symmetric()
 	s.reuseAsNonZeroed(n)
 	var restore func()
 	if a == s {
@@ -584,34 +577,8 @@ func (s *SymDense) sliceSym(i, k int) *SymDense {
 	return &v
 }
 
-// Norm returns the specified norm of the receiver. Valid norms are:
-//
-//	1 - The maximum absolute column sum
-//	2 - The Frobenius norm, the square root of the sum of the squares of the elements
-//	Inf - The maximum absolute row sum
-//
-// Norm will panic with ErrNormOrder if an illegal norm is specified and with
-// ErrZeroLength if the matrix has zero size.
-func (s *SymDense) Norm(norm float64) float64 {
-	if s.IsEmpty() {
-		panic(ErrZeroLength)
-	}
-	lnorm := normLapack(norm, false)
-	if lnorm == lapack.MaxColumnSum || lnorm == lapack.MaxRowSum {
-		work := getFloat64s(s.mat.N, false)
-		defer putFloat64s(work)
-		return lapack64.Lansy(lnorm, s.mat, work)
-	}
-	return lapack64.Lansy(lnorm, s.mat, nil)
-}
-
 // Trace returns the trace of the matrix.
-//
-// Trace will panic with ErrZeroLength if the matrix has zero size.
 func (s *SymDense) Trace() float64 {
-	if s.IsEmpty() {
-		panic(ErrZeroLength)
-	}
 	// TODO(btracey): could use internal asm sum routine.
 	var v float64
 	for i := 0; i < s.mat.N; i++ {
@@ -666,10 +633,10 @@ func (s *SymDense) GrowSym(n int) Symmetric {
 
 // PowPSD computes a^pow where a is a positive symmetric definite matrix.
 //
-// PowPSD returns an error if the matrix is not positive symmetric definite
+// PowPSD returns an error if the matrix is not not positive symmetric definite
 // or the Eigen decomposition is not successful.
 func (s *SymDense) PowPSD(a Symmetric, pow float64) error {
-	dim := a.SymmetricDim()
+	dim := a.Symmetric()
 	s.reuseAsNonZeroed(dim)
 
 	var eigen EigenSym

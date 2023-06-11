@@ -5,6 +5,8 @@
 package topo
 
 import (
+	"sort"
+
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/internal/ordered"
 	"gonum.org/v1/gonum/graph/internal/set"
@@ -132,7 +134,7 @@ type johnsonGraph struct {
 // johnsonGraphFrom returns a deep copy of the graph g.
 func johnsonGraphFrom(g graph.Directed) johnsonGraph {
 	nodes := graph.NodesOf(g.Nodes())
-	ordered.ByID(nodes)
+	sort.Sort(ordered.ByID(nodes))
 	c := johnsonGraph{
 		orig:  nodes,
 		index: make(map[int64]int, len(nodes)),

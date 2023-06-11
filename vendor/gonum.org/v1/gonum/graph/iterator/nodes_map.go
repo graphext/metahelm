@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !safe
 // +build !safe
 
 package iterator
@@ -23,7 +22,7 @@ type Nodes struct {
 // match the graph.Node IDs, and the map keys are not used.
 //
 // Behavior of the Nodes is unspecified if nodes is mutated after
-// the call to NewNodes.
+// the call the NewNodes.
 func NewNodes(nodes map[int64]graph.Node) *Nodes {
 	return &Nodes{nodes: len(nodes), iter: newMapIterNodes(nodes)}
 }
@@ -56,7 +55,7 @@ func (n *Nodes) Node() graph.Node {
 func (n *Nodes) Reset() {
 	n.curr = nil
 	n.pos = 0
-	n.iter.hiter = hiter{}
+	n.iter.it = nil
 }
 
 // NodeSlice returns all the remaining nodes in the iterator and advances
@@ -92,7 +91,7 @@ type NodesByEdge struct {
 // and the map keys are not used.
 //
 // Behavior of the NodesByEdge is unspecified if nodes or edges
-// is mutated after the call to NewNodes.
+// is mutated after the call the NewNodes.
 func NewNodesByEdge(nodes map[int64]graph.Node, edges map[int64]graph.Edge) *NodesByEdge {
 	return &NodesByEdge{nodes: nodes, edges: len(edges), iter: newMapIterEdges(edges)}
 }
@@ -105,9 +104,9 @@ func NewNodesByEdge(nodes map[int64]graph.Node, edges map[int64]graph.Edge) *Nod
 // and the map keys are not used.
 //
 // Behavior of the NodesByEdge is unspecified if nodes or edges
-// is mutated after the call to NewNodes.
+// is mutated after the call the NewNodes.
 func NewNodesByWeightedEdge(nodes map[int64]graph.Node, edges map[int64]graph.WeightedEdge) *NodesByEdge {
-	return &NodesByEdge{nodes: nodes, edges: len(edges), iter: newMapIterByWeightedEdges(edges)}
+	return &NodesByEdge{nodes: nodes, edges: len(edges), iter: newMapIterWeightedEdges(edges)}
 }
 
 // NewNodesByLines returns a NodesByEdge initialized with the
@@ -118,9 +117,9 @@ func NewNodesByWeightedEdge(nodes map[int64]graph.Node, edges map[int64]graph.We
 // and the map keys are not used.
 //
 // Behavior of the NodesByEdge is unspecified if nodes or lines
-// is mutated after the call to NewNodes.
+// is mutated after the call the NewNodes.
 func NewNodesByLines(nodes map[int64]graph.Node, lines map[int64]map[int64]graph.Line) *NodesByEdge {
-	return &NodesByEdge{nodes: nodes, edges: len(lines), iter: newMapIterByLines(lines)}
+	return &NodesByEdge{nodes: nodes, edges: len(lines), iter: newMapIterLines(lines)}
 }
 
 // NewNodesByWeightedLines returns a NodesByEdge initialized with the
@@ -131,9 +130,9 @@ func NewNodesByLines(nodes map[int64]graph.Node, lines map[int64]map[int64]graph
 // and the map keys are not used.
 //
 // Behavior of the NodesByEdge is unspecified if nodes or lines
-// is mutated after the call to NewNodes.
+// is mutated after the call the NewNodes.
 func NewNodesByWeightedLines(nodes map[int64]graph.Node, lines map[int64]map[int64]graph.WeightedLine) *NodesByEdge {
-	return &NodesByEdge{nodes: nodes, edges: len(lines), iter: newMapIterByWeightedLines(lines)}
+	return &NodesByEdge{nodes: nodes, edges: len(lines), iter: newMapIterWeightedLines(lines)}
 }
 
 // Len returns the remaining number of nodes to be iterated over.
@@ -164,7 +163,7 @@ func (n *NodesByEdge) Node() graph.Node {
 func (n *NodesByEdge) Reset() {
 	n.curr = nil
 	n.pos = 0
-	n.iter.hiter = hiter{}
+	n.iter.it = nil
 }
 
 // NodeSlice returns all the remaining nodes in the iterator and advances

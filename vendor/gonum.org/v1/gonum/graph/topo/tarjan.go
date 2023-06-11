@@ -6,6 +6,7 @@ package topo
 
 import (
 	"fmt"
+	"sort"
 
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/internal/ordered"
@@ -29,7 +30,7 @@ func (e Unorderable) Error() string {
 	return fmt.Sprintf("topo: no topological ordering: cyclic components: %v", [][]graph.Node(e))
 }
 
-func lexical(nodes []graph.Node) { ordered.ByID(nodes) }
+func lexical(nodes []graph.Node) { sort.Sort(ordered.ByID(nodes)) }
 
 // Sort performs a topological sort of the directed graph g returning the 'from' to 'to'
 // sort order. If a topological ordering is not possible, an Unorderable error is returned
@@ -87,6 +88,7 @@ func sortedFrom(sccs [][]graph.Node, order func([]graph.Node)) ([]graph.Node, er
 // Generally speaking, a directed graph where the number of strongly connected components is equal
 // to the number of nodes is acyclic, unless you count reflexive edges as a cycle (which requires
 // only a little extra testing.)
+//
 func TarjanSCC(g graph.Directed) [][]graph.Node {
 	return tarjanSCCstabilized(g, nil)
 }
@@ -129,6 +131,7 @@ func tarjanSCCstabilized(g graph.Directed, order func([]graph.Node)) [][]graph.N
 // algorithm. The implementation is from the pseudocode at
 //
 // http://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm?oldid=642744644
+//
 type tarjan struct {
 	succ func(id int64) []graph.Node
 

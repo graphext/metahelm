@@ -6,7 +6,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.6.1
 	golang.org/x/sync v0.1.0
-	gonum.org/v1/gonum v0.13.0
+	gonum.org/v1/gonum v0.9.3
 	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.12.0
 	k8s.io/api v0.27.1

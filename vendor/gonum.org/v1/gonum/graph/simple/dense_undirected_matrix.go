@@ -5,6 +5,8 @@
 package simple
 
 import (
+	"sort"
+
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/internal/ordered"
 	"gonum.org/v1/gonum/graph/iterator"
@@ -60,7 +62,7 @@ func NewUndirectedMatrix(n int, init, self, absent float64) *UndirectedMatrix {
 // specifies the cost of self connection, and absent specifies the weight
 // returned for absent edges.
 func NewUndirectedMatrixFrom(nodes []graph.Node, init, self, absent float64) *UndirectedMatrix {
-	ordered.ByID(nodes)
+	sort.Sort(ordered.ByID(nodes))
 	for i, n := range nodes {
 		if int64(i) != n.ID() {
 			panic("simple: non-contiguous node IDs")
@@ -105,7 +107,7 @@ func (g *UndirectedMatrix) From(id int64) graph.Nodes {
 		return graph.Empty
 	}
 	var nodes []graph.Node
-	r := g.mat.SymmetricDim()
+	r := g.mat.Symmetric()
 	for i := 0; i < r; i++ {
 		if int64(i) == id {
 			continue
@@ -159,7 +161,7 @@ func (g *UndirectedMatrix) Nodes() graph.Nodes {
 		copy(nodes, g.nodes)
 		return iterator.NewOrderedNodes(nodes)
 	}
-	r := g.mat.SymmetricDim()
+	r := g.mat.Symmetric()
 	// Matrix graphs must have at least one node.
 	return iterator.NewImplicitNodes(0, r, newSimpleNode)
 }
@@ -261,6 +263,6 @@ func (g *UndirectedMatrix) WeightedEdges() graph.WeightedEdges {
 }
 
 func (g *UndirectedMatrix) has(id int64) bool {
-	r := g.mat.SymmetricDim()
+	r := g.mat.Symmetric()
 	return 0 <= id && id < int64(r)
 }

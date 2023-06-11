@@ -5,6 +5,8 @@
 package simple
 
 import (
+	"sort"
+
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/internal/ordered"
 	"gonum.org/v1/gonum/graph/iterator"
@@ -60,7 +62,7 @@ func NewDirectedMatrix(n int, init, self, absent float64) *DirectedMatrix {
 // specifies the cost of self connection, and absent specifies the weight
 // returned for absent edges.
 func NewDirectedMatrixFrom(nodes []graph.Node, init, self, absent float64) *DirectedMatrix {
-	ordered.ByID(nodes)
+	sort.Sort(ordered.ByID(nodes))
 	for i, n := range nodes {
 		if int64(i) != n.ID() {
 			panic("simple: non-contiguous node IDs")
